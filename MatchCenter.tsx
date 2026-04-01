@@ -14,7 +14,7 @@ import {
   ClipboardList, Search, RefreshCcw, ShieldAlert, Camera, HelpCircle,
   LayoutDashboard, PieChart, ZapOff, Calendar, Crown, Settings, Image as ImageIcon, Save,
   ChevronRight, Smartphone, Medal, Zap as Bolt, Crosshair, Edit2, Upload,
-  ArrowLeftRight, History
+  ArrowLeftRight, History, Coins
 } from 'lucide-react';
 import MotionButton from '../components/MotionButton';
 import { MatchState, Player, TeamID, PlayerID, BallEvent } from '../types';
@@ -122,6 +122,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [pendingExtra, setPendingExtra] = useState<'WD' | 'NB' | 'BYE' | 'LB' | null>(null); // B-04: added LB
   const [wicketWizard, setWicketWizard] = useState<{ open: boolean, type?: string }>({ open: false });
   const [newName, setNewName] = useState('');
+  const [tossFlipPhase, setTossFlipPhase] = useState('WAITING');
   const [phoneQuery, setPhoneQuery] = useState('');
   const [editingTeamNameId, setEditingTeamNameId] = useState<TeamID | null>(null);
 
@@ -145,7 +146,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [handoffQRUrl, setHandoffQRUrl] = useState<string | null>(null);
   const [broadcastQRUrl, setBroadcastQRUrl] = useState<string | null>(null);
   const [transferLinkCopied, setTransferLinkCopied] = useState(false);
-  // lastPushRef removed â push every ball immediately for real-time broadcast
+  // lastPushRef removed Ã¢ÂÂ push every ball immediately for real-time broadcast
 
   // Player ID search dropdown
   const [playerDropdownList, setPlayerDropdownList] = useState<Array<{id: string, name: string, phone: string}>>([]);
@@ -166,7 +167,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
   }, [match]);
 
-  // ââ Supabase Broadcast channel ref âââââââââââââââââââââââââââââââââââââââââââ
+  // Ã¢ÂÂÃ¢ÂÂ Supabase Broadcast channel ref Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
   const liveChannelRef = useRef<any>(null);
 
   // Subscribe as soon as the matchId is known (during CONFIG, before first ball).
@@ -177,7 +178,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   useEffect(() => {
     if (!match.matchId) return;
     const ch = supabase.channel(`live:${match.matchId}`);
-    ch.subscribe();                 // async â connects in background
+    ch.subscribe();                 // async Ã¢ÂÂ connects in background
     liveChannelRef.current = ch;
     return () => {
       supabase.removeChannel(ch);
@@ -185,15 +186,15 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     };
   }, [match.matchId]); // only re-run if matchId changes (never in practice)
 
-  // Live broadcast push â DB upsert + WebSocket broadcast after EVERY ball.
+  // Live broadcast push Ã¢ÂÂ DB upsert + WebSocket broadcast after EVERY ball.
   // IMPORTANT: use the local `status` UI variable, NOT `match.status`.
-  // `match.status` is only ever 'CONFIG' or 'COMPLETED' â it never becomes 'LIVE'.
+  // `match.status` is only ever 'CONFIG' or 'COMPLETED' Ã¢ÂÂ it never becomes 'LIVE'.
   // The local `status` state is what transitions to 'LIVE' when scoring begins.
   useEffect(() => {
     if (status !== 'LIVE' || !match.matchId) return;
-    // 1. DB upsert â persists state so late-joining spectators load the current score
+    // 1. DB upsert Ã¢ÂÂ persists state so late-joining spectators load the current score
     pushLiveMatchState(match);
-    // 2. Broadcast â instant delivery (~50 ms) to all connected spectator tabs
+    // 2. Broadcast Ã¢ÂÂ instant delivery (~50 ms) to all connected spectator tabs
     liveChannelRef.current?.send({
       type: 'broadcast',
       event: 'score_update',
@@ -208,7 +209,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   };
 
   const checkTeamConflicts = () => {
-    if (!userData?.phone) { setStatus('TOSS'); return; }
+    if (!userData?.phone) { setStatus('TOSS_FLIP'); return; }
     
     const globalVault = JSON.parse(localStorage.getItem('22YARDS_GLOBAL_VAULT') || '{}');
     const userVault = globalVault[userData.phone] || { teams: [] };
@@ -234,7 +235,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       }
     }
 
-    setStatus('TOSS');
+    setStatus('TOSS_FLIP');
   };
 
   const handleResolveConflict = (resolveType: 'EXISTING' | 'NEW') => {
@@ -257,8 +258,8 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     });
 
     setSquadConflict(null);
-    // Directly transition to TOSS to prevent double-modal issues for same-named teams
-    setStatus('TOSS');
+    // Directly transition to TOSS_FLIP to prevent double-modal issues for same-named teams
+    setStatus('TOSS_FLIP');
   };
 
   const handleScore = (runs: number) => {
@@ -345,7 +346,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const isUserInTeamA = (teamA.squad || []).some(p => p.phone === activePhone);
     const isUserInTeamB = (teamB.squad || []).some(p => p.phone === activePhone);
 
-    // ââ Helper: build a personalised match record for any participant âââââââââ
+    // Ã¢ÂÂÃ¢ÂÂ Helper: build a personalised match record for any participant Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
     const buildMatchRecord = (playerObj: any, playerTeamId: 'A' | 'B') => {
       const oppTeamObj = playerTeamId === 'A' ? teamB : teamA;
 
@@ -397,7 +398,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           const allSquad = [...(inn1BattingTeam.squad || []), ...(inn1BowlingTeam.squad || [])];
           const findP = (id: string) => allSquad.find(p => p.id === id);
 
-          // ââ Dismissal string for a batter in a given innings âââââââââââââ
+          // Ã¢ÂÂÃ¢ÂÂ Dismissal string for a batter in a given innings Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
           const getOutDetail = (playerId: string, inningsNum: number) => {
             const outEv = hist.find(h => h.innings === inningsNum && h.isWicket && h.strikerId === playerId);
             if (!outEv) {
@@ -417,7 +418,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             }
           };
 
-          // ââ Extras breakdown for an innings ââââââââââââââââââââââââââââââ
+          // Ã¢ÂÂÃ¢ÂÂ Extras breakdown for an innings Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
           const getExtras = (inningsNum: number) => {
             const balls = hist.filter(h => h.innings === inningsNum);
             const wides    = balls.filter(h => h.type === 'WD').reduce((s, h) => s + (h.totalValue || 1), 0);
@@ -428,7 +429,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             return { total: wides + noBalls + byes + legByes + penalties, wides, noBalls, byes, legByes, penalties };
           };
 
-          // ââ Fall of wickets for an innings ââââââââââââââââââââââââââââââââ
+          // Ã¢ÂÂÃ¢ÂÂ Fall of wickets for an innings Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
           const getFoW = (inningsNum: number, squad: any[]) =>
             hist
               .filter(h => h.innings === inningsNum && h.isWicket)
@@ -438,7 +439,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 over: `${Math.floor(h.ballNumber / 6)}.${h.ballNumber % 6}`,
               }));
 
-          // ââ Match awards âââââââââââââââââââââââââââââââââââââââââââââââââ
+          // Ã¢ÂÂÃ¢ÂÂ Match awards Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
           const scored = allSquad
             .map(p => ({ ...p, _impact: (p.runs||0) + (p.wickets||0)*25 + (p.catches||0)*10 + (p.run_outs||0)*10 + (p.stumpings||0)*10 }))
             .sort((a, b) => b._impact - a._impact);
@@ -477,7 +478,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           };
         })(),
         targetScore: finalMatchState.config.target || (finalMatchState.config.innings1Score + 1),
-        // Team totals for archive display â isInn1Batter = this player's team batted first
+        // Team totals for archive display Ã¢ÂÂ isInn1Batter = this player's team batted first
         myTeamScore: (() => { const f = playerTeamId === finalMatchState.teams.bowlingTeamId; return f ? (finalMatchState.config.innings1Score || 0) : (finalMatchState.liveScore.runs || 0); })(),
         myTeamWickets: (() => { const f = playerTeamId === finalMatchState.teams.bowlingTeamId; return f ? (finalMatchState.config.innings1Wickets || 0) : (finalMatchState.liveScore.wickets || 0); })(),
         myTeamOvers: (() => { const f = playerTeamId === finalMatchState.teams.bowlingTeamId; const b = f ? (finalMatchState.config.innings1Balls || 0) : (finalMatchState.liveScore.balls || 0); return `${Math.floor(b/6)}.${b%6}`; })(),
@@ -487,7 +488,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       };
     };
 
-    // ââ Push match record into EVERY participant's vault âââââââââââââââââââââ
+    // Ã¢ÂÂÃ¢ÂÂ Push match record into EVERY participant's vault Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
     // This ensures all players (not just the scorer) see the match in their
     // Personal Archive and Performance Hub when they log in.
     const allParticipants: Array<{ player: any; teamId: 'A' | 'B' }> = [
@@ -503,14 +504,14 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         globalVault[pPhone] = { history: [], teams: [], name: player.name };
       }
 
-      // Idempotent â don't double-insert if the match was somehow already recorded
+      // Idempotent Ã¢ÂÂ don't double-insert if the match was somehow already recorded
       const alreadyRecorded = globalVault[pPhone].history.some((m: any) => m.id === finalMatchState.matchId);
       if (!alreadyRecorded) {
         globalVault[pPhone].history.push(buildMatchRecord(player, teamId));
       }
     });
 
-    // ââ Archival Squad Persistence â ONLY for the logged-in scorer's team ââââ
+    // Ã¢ÂÂÃ¢ÂÂ Archival Squad Persistence Ã¢ÂÂ ONLY for the logged-in scorer's team Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
     const myTeamId = isUserInTeamA ? 'A' : (isUserInTeamB ? 'B' : null);
     if (myTeamId) {
       const myTeamObj = myTeamId === 'A' ? teamA : teamB;
@@ -528,7 +529,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           globalVault[activePhone].teams[idx].players = [...archivedSquad, ...newPlayers];
         }
       } else {
-        // Mode is 'NEW' or Unique Name â always creates a fresh entry
+        // Mode is 'NEW' or Unique Name Ã¢ÂÂ always creates a fresh entry
         globalVault[activePhone].teams.push({
           id: `T-${Date.now()}-${myTeamId}`,
           name: myTeamObj.name,
@@ -539,7 +540,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     localStorage.setItem('22YARDS_GLOBAL_VAULT', JSON.stringify(globalVault));
 
-    // ââ Supabase Sync âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    // Ã¢ÂÂÃ¢ÂÂ Supabase Sync Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
     // Upsert a player row + archive_vault for EVERY participant so that when
     // any player logs in on any device their stats and history are up-to-date.
     const syncToCloud = async () => {
@@ -588,7 +589,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       setTimeout(() => setOverlayAnim(null), 1500);
     }
     // Capture the new state synchronously so we can push it to Supabase immediately
-    // after setMatch returns â no useEffect timing dependency, no status checks needed.
+    // after setMatch returns Ã¢ÂÂ no useEffect timing dependency, no status checks needed.
     let _newState: any = null;
     setMatch(m => {
       let runIncrement = runs;
@@ -598,7 +599,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       if (extraType === 'WD') { extraIncrement = runs + 1; batsmanCredit = 0; isBallCounted = false; runIncrement = 0; }
       else if (extraType === 'NB') { extraIncrement = 1; isBallCounted = false; }
       else if (extraType === 'BYE') { extraIncrement = runs; batsmanCredit = 0; runIncrement = 0; }
-      else if (extraType === 'LB') { extraIncrement = runs; batsmanCredit = 0; runIncrement = 0; } // B-04: leg bye â ball counted, no batsman credit
+      else if (extraType === 'LB') { extraIncrement = runs; batsmanCredit = 0; runIncrement = 0; } // B-04: leg bye Ã¢ÂÂ ball counted, no batsman credit
       else if (extraType === 'PENALTY_RUNS') { extraIncrement = 5; batsmanCredit = 0; isBallCounted = false; runIncrement = 0; } // B-19: 5-run penalty
       // NB-FIX: batsman DOES face a no-ball (ball counts for batsman stats), but WD is not faced
       const batsmanBallCounted = extraType !== 'WD' && extraType !== 'PENALTY_RUNS';
@@ -680,7 +681,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       _newState = { ...m, liveScore: { runs: r, wickets: w, balls: b }, teams: { ...m.teams, [battingKey]: { ...m.teams[battingKey], squad: newBatting }, [bowlingKey]: { ...m.teams[bowlingKey], squad: newBowling } }, crease: { ...m.crease, strikerId: sId, nonStrikerId: nsId }, history: [...(m.history || []), ballRecord] };
       return _newState;
     });
-    // setMatch's functional updater runs synchronously â _newState is populated here.
+    // setMatch's functional updater runs synchronously Ã¢ÂÂ _newState is populated here.
     // Push directly: no useEffect, no status check, no React timing dependency.
     if (_newState) {
       pushLiveMatchState(_newState);
@@ -705,10 +706,10 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
            const wicketsRemaining = Math.max(0, (m.teams[m.teams.battingTeamId === 'A' ? 'teamA' : 'teamB']?.squad?.length || 1) - 1 - finalWickets); // B-09 fix
            marginStr = `WON BY ${wicketsRemaining} WICKET${wicketsRemaining !== 1 ? 'S' : ''}`;
         } else if (finalRuns === (m.config.target || 0) - 1) {
-           // B-05 fix: Tie condition â scores level
+           // B-05 fix: Tie condition Ã¢ÂÂ scores level
            winnerName = 'MATCH TIED';
            winnerId = null;
-           marginStr = 'SCORES LEVEL â MATCH TIED';
+           marginStr = 'SCORES LEVEL Ã¢ÂÂ MATCH TIED';
         } else {
            // Setting team wins by runs
            winnerId = m.teams.bowlingTeamId;
@@ -879,7 +880,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const currentBowler = getPlayer(match.crease.bowlerId);
   const isAddPlayerDisabled = useMemo(() => !newName.trim() || (!selectedVaultPlayer && phoneQuery.length !== 10), [newName, phoneQuery, selectedVaultPlayer]);
 
-  // ââ Player vault helpers ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // Ã¢ÂÂÃ¢ÂÂ Player vault helpers Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
   const allVaultPlayers = useMemo(() => {
     const vault = JSON.parse(localStorage.getItem('22YARDS_GLOBAL_VAULT') || '{}');
     const seen = new Map<string, {id: string, name: string, phone: string}>();
@@ -930,7 +931,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setSelectedVaultPlayer(null); setNewName(''); setPhoneQuery('');
   };
 
-  // ââ QR Scanner âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // Ã¢ÂÂÃ¢ÂÂ QR Scanner Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
   const startQRScanner = async () => {
     setQrScanStatus('SCANNING');
     setQrScanError('');
@@ -1000,7 +1001,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setShowQRScanner(false);
   };
 
-  // ââ Transfer Scoring / Live Broadcast âââââââââââââââââââââââââââââââââââââââ
+  // Ã¢ÂÂÃ¢ÂÂ Transfer Scoring / Live Broadcast Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
   const openTransferModal = async () => {
     const matchId = match.matchId;
     const base = window.location.origin;
@@ -1030,27 +1031,27 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setTimeout(() => setTransferLinkCopied(false), 2500);
   };
 
-  // ââ Share helpers âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // Ã¢ÂÂÃ¢ÂÂ Share helpers Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
   const generateShareText = (type: 'LIVE' | 'FINAL'): string => {
     const battingTeam = getTeamObj(match.teams.battingTeamId);
     const bowlingTeam = getTeamObj(match.teams.bowlingTeamId);
     if (type === 'LIVE') {
       const overs = `${Math.floor(match.liveScore.balls/6)}.${match.liveScore.balls%6}`;
       const lines: string[] = [
-        'ð *22YARDS Â· LIVE SCORECARD*', '',
+        'Ã°ÂÂÂ *22YARDS ÃÂ· LIVE SCORECARD*', '',
         `${battingTeam.name}  vs  ${bowlingTeam.name}`,
-        `ð *${match.liveScore.runs}/${match.liveScore.wickets}* (${overs} ov)`,
+        `Ã°ÂÂÂ *${match.liveScore.runs}/${match.liveScore.wickets}* (${overs} ov)`,
       ];
       if (match.currentInnings === 2 && match.config.target) {
-        lines.push(`ð¯ Target ${match.config.target} Â· Need ${Math.max(0, match.config.target - match.liveScore.runs)} in ${Math.max(0, match.config.overs*6 - match.liveScore.balls)} balls`);
+        lines.push(`Ã°ÂÂÂ¯ Target ${match.config.target} ÃÂ· Need ${Math.max(0, match.config.target - match.liveScore.runs)} in ${Math.max(0, match.config.overs*6 - match.liveScore.balls)} balls`);
       }
       const s = getPlayer(match.crease.strikerId);
       const b = getPlayer(match.crease.bowlerId);
-      if (s) lines.push(`ð ${s.name}: ${s.runs}(${s.balls})`);
-      if (b) lines.push(`ð³ ${b.name}: ${b.wickets}/${b.runs_conceded}`);
+      if (s) lines.push(`Ã°ÂÂÂ ${s.name}: ${s.runs}(${s.balls})`);
+      if (b) lines.push(`Ã°ÂÂÂ³ ${b.name}: ${b.wickets}/${b.runs_conceded}`);
       const liveUrl = `${window.location.origin}/?watch=${match.matchId}`;
-      lines.push('', `ð¡ *Watch Live:* ${liveUrl}`);
-      lines.push('ð² 22YARDS Cricket App');
+      lines.push('', `Ã°ÂÂÂ¡ *Watch Live:* ${liveUrl}`);
+      lines.push('Ã°ÂÂÂ² 22YARDS Cricket App');
       return lines.join('\n');
     }
     // FINAL
@@ -1058,11 +1059,11 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const inn1Team = match.teams[inn1Key];
     const inn2Team = battingTeam;
     const lines: string[] = [
-      'ð *22YARDS Â· MATCH REPORT*', '',
+      'Ã°ÂÂÂ *22YARDS ÃÂ· MATCH REPORT*', '',
       `${inn1Team.name}  vs  ${inn2Team.name}`,
-      `ð ${match.config.dateTime || 'Today'}`,
-      `ðï¸ ${match.config.ground || 'Ground'}, ${match.config.city}`,
-      ``, `ð *${winnerTeam?.margin || 'MATCH COMPLETED'}*`, ''
+      `Ã°ÂÂÂ ${match.config.dateTime || 'Today'}`,
+      `Ã°ÂÂÂÃ¯Â¸Â ${match.config.ground || 'Ground'}, ${match.config.city}`,
+      ``, `Ã°ÂÂÂ *${winnerTeam?.margin || 'MATCH COMPLETED'}*`, ''
     ];
     const top2 = (sq: any[]) => [...sq].sort((a,b) => (b.runs||0)-(a.runs||0)).filter(p => (p.runs||0)>0).slice(0,2);
     const topBat = top2(inn1Team.squad || []);
@@ -1076,7 +1077,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       });
       lines.push('');
     }
-    lines.push('ð² 22YARDS Cricket App');
+    lines.push('Ã°ÂÂÂ² 22YARDS Cricket App');
     return lines.join('\n');
   };
 
@@ -1092,7 +1093,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   };
   const isConfigValid = useMemo(() => match.config.overs > 0 && match.config.city.trim() !== '' && match.config.ground.trim() !== '', [match.config]);
 
-  // Avatar helper â uses actual uploaded photo for the logged-in user, dicebear for others
+  // Avatar helper Ã¢ÂÂ uses actual uploaded photo for the logged-in user, dicebear for others
   const getPlayerAvatar = (player: any): string => {
     if (player && player.phone && userData?.phone && player.phone === userData.phone && userData?.avatar) {
       return userData.avatar;
@@ -1204,6 +1205,84 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </div>
         )}
         <AnimatePresence>{squadConflict && (<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[10000] bg-black/95 flex items-center justify-center p-6 backdrop-blur-xl"><motion.div initial={{ scale: 0.9, y: 40 }} animate={{ scale: 1, y: 0 }} className="w-full max-w-sm bg-[#0A0A0A] border border-white/10 rounded-[48px] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,1)]"><div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.02]"><div className="flex items-center space-x-3"><ShieldAlert size={24} className="text-[#FFD600]" /><h3 className="font-heading text-4xl tracking-tighter uppercase italic">SQUAD RECON</h3></div></div><div className="p-10 space-y-8"><div className="space-y-4 text-center"><p className="text-[11px] font-black text-[#00F0FF] uppercase tracking-[0.4em]">Conflict Detected</p><h4 className="font-heading text-5xl uppercase leading-none text-white italic">{squadConflict.name}</h4><p className="text-[10px] font-black text-white/30 uppercase leading-relaxed tracking-widest">THIS TEAM ALREADY EXISTS IN YOUR CAREER ARCHIVE. LINK TO THE EXISTING SQUADRON OR COMMISSION A NEW DEPLOYMENT?</p></div><div className="p-5 bg-white/5 rounded-3xl border border-white/10 space-y-4"><div className="flex justify-between items-center px-2"><span className="text-[8px] font-black text-white/20 uppercase tracking-[0.3em]">Archived Roster</span><span className="text-[9px] font-black text-[#39FF14] uppercase">{(squadConflict.existingSquad || []).length} PERSONNEL</span></div><div className="flex -space-x-3 justify-center overflow-hidden py-2">{(squadConflict.existingSquad || []).slice(0, 5).map((p, i) => (<div key={i} className="w-10 h-10 rounded-full border-2 border-black bg-[#111] overflow-hidden"><img src={getPlayerAvatar(p)} className="w-full h-full object-cover" /></div>))}{squadConflict.existingSquad.length > 5 && (<div className="w-10 h-10 rounded-full border-2 border-black bg-[#111] flex items-center justify-center text-[10px] font-black text-white/40">+{squadConflict.existingSquad.length - 5}</div>)}</div></div><div className="flex flex-col space-y-3"><MotionButton onClick={() => handleResolveConflict('EXISTING')} className="w-full bg-[#00F0FF] text-black py-5 !rounded-[24px] font-black tracking-[0.3em]">ARCHIVE LINKAGE</MotionButton><button onClick={() => handleResolveConflict('NEW')} className="w-full text-white/30 hover:text-white py-4 font-black uppercase text-[9px] tracking-[0.4em] transition-all">FRESH COMMISSION</button></div></div></motion.div></motion.div>)}</AnimatePresence>
+        {status === 'TOSS_FLIP' && (
+          <div className="flex-1 flex flex-col items-center justify-center h-full overflow-hidden relative bg-[#050505]">
+            <style>{`
+              @keyframes coinFlip {
+                0% { transform: perspective(800px) rotateY(0deg) scale(1); }
+                10% { transform: perspective(800px) rotateY(360deg) translateY(-40px) scale(1.1); }
+                20% { transform: perspective(800px) rotateY(720deg) translateY(-80px) scale(1.15); }
+                30% { transform: perspective(800px) rotateY(1080deg) translateY(-120px) scale(1.2); }
+                40% { transform: perspective(800px) rotateY(1440deg) translateY(-140px) scale(1.2); }
+                50% { transform: perspective(800px) rotateY(1800deg) translateY(-130px) scale(1.15); }
+                60% { transform: perspective(800px) rotateY(2160deg) translateY(-100px) scale(1.1); }
+                70% { transform: perspective(800px) rotateY(2520deg) translateY(-60px) scale(1.05); }
+                80% { transform: perspective(800px) rotateY(2880deg) translateY(-20px) scale(1); }
+                90% { transform: perspective(800px) rotateY(3060deg) translateY(-5px) scale(1); }
+                100% { transform: perspective(800px) rotateY(3240deg) translateY(0px) scale(1); }
+              }
+              @keyframes coinGlow {
+                0%, 100% { box-shadow: 0 0 30px rgba(255, 214, 0, 0.3), 0 0 60px rgba(255, 214, 0, 0.1); }
+                50% { box-shadow: 0 0 50px rgba(255, 214, 0, 0.6), 0 0 100px rgba(255, 214, 0, 0.3), 0 0 150px rgba(255, 214, 0, 0.1); }
+              }
+              @keyframes coinShadow {
+                0% { transform: scaleX(1); opacity: 0.3; }
+                40% { transform: scaleX(0.4); opacity: 0.1; }
+                100% { transform: scaleX(1); opacity: 0.3; }
+              }
+              @keyframes shimmer {
+                0% { background-position: -200% center; }
+                100% { background-position: 200% center; }
+              }
+              @keyframes pulseRing {
+                0% { transform: scale(0.8); opacity: 0.8; }
+                100% { transform: scale(2.5); opacity: 0; }
+              }
+              .coin-flip-active { animation: coinFlip 2.8s cubic-bezier(0.25, 0.1, 0.25, 1) forwards; }
+              .coin-glow { animation: coinGlow 1.5s ease-in-out infinite; }
+              .coin-shadow { animation: coinShadow 2.8s cubic-bezier(0.25, 0.1, 0.25, 1) forwards; }
+              .shimmer-text {
+                background: linear-gradient(90deg, #FFD600 0%, #fff 40%, #FFD600 60%, #fff 100%);
+                background-size: 200% 100%;
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                animation: shimmer 2s linear infinite;
+              }
+            `}</style>
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-[300px] h-[300px] rounded-full border border-[#FFD600]/5 absolute" />
+              <div className="w-[400px] h-[400px] rounded-full border border-[#FFD600]/3 absolute" />
+              <div className="w-[500px] h-[500px] rounded-full border border-[#FFD600]/2 absolute" />
+            </div>
+            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="mb-12 text-center z-10">
+              <p className="text-[9px] font-black text-[#FFD600]/40 uppercase tracking-[0.5em] mb-2">Match Protocol</p>
+              <h2 className="font-heading text-5xl italic uppercase tracking-tighter text-white leading-none">THE TOSS</h2>
+            </motion.div>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3, duration: 0.5 }} className="flex items-center space-x-6 mb-10 z-10">
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00F0FF]">{match.teams.teamA.name}</span>
+              <span className="text-[10px] font-black text-white/20">VS</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#FF003C]">{match.teams.teamB.name}</span>
+            </motion.div>
+            <div className="relative z-10">
+              {tossFlipPhase === 'FLIPPING' && (<><div className="absolute inset-0 flex items-center justify-center"><div className="w-32 h-32 rounded-full border-2 border-[#FFD600]/30" style={{ animation: 'pulseRing 1s ease-out infinite' }} /></div><div className="absolute inset-0 flex items-center justify-center"><div className="w-32 h-32 rounded-full border-2 border-[#FFD600]/20" style={{ animation: 'pulseRing 1s ease-out 0.3s infinite' }} /></div></>)}
+              <motion.div initial={{ scale: 0, rotateY: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', damping: 15, stiffness: 200 }}
+                className={`w-32 h-32 rounded-full flex items-center justify-center relative cursor-pointer ${tossFlipPhase === 'WAITING' ? 'coin-glow' : ''} ${tossFlipPhase === 'FLIPPING' ? 'coin-flip-active' : ''} ${tossFlipPhase === 'RESULT' ? 'coin-glow' : ''}`}
+                style={{ background: 'linear-gradient(145deg, #FFD600, #CC9900, #FFD600, #AA7700)', transformStyle: 'preserve-3d' }}
+                onClick={() => { if (tossFlipPhase === 'WAITING') { setTossFlipPhase('FLIPPING'); setTimeout(() => { setTossFlipPhase('RESULT'); setTimeout(() => { setStatus('TOSS'); setTossFlipPhase('WAITING'); }, 1500); }, 2800); } }}>
+                <div className="absolute inset-1 rounded-full border-2 border-[#AA7700]/50 flex items-center justify-center" style={{ background: 'linear-gradient(145deg, #FFDF33, #E6BE00)' }}>
+                  <div className="absolute inset-2 rounded-full border border-[#CC9900]/30" />
+                  {tossFlipPhase === 'RESULT' ? (<motion.div initial={{ scale: 0, rotate: -180 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', damping: 12 }}><Check size={40} className="text-[#5D4200]" strokeWidth={3} /></motion.div>) : (<Coins size={40} className="text-[#5D4200]" strokeWidth={1.5} />)}
+                </div>
+              </motion.div>
+              {tossFlipPhase === 'FLIPPING' && (<div className="w-24 h-3 mx-auto mt-6 rounded-full bg-white/10 coin-shadow" />)}
+            </div>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6, duration: 0.5 }} className="mt-10 text-center z-10">
+              {tossFlipPhase === 'WAITING' && (<motion.button onClick={() => { setTossFlipPhase('FLIPPING'); setTimeout(() => { setTossFlipPhase('RESULT'); setTimeout(() => { setStatus('TOSS'); setTossFlipPhase('WAITING'); }, 1500); }, 2800); }} whileTap={{ scale: 0.95 }} className="px-12 py-4 bg-[#FFD600]/10 border border-[#FFD600]/30 rounded-2xl text-[10px] font-black text-[#FFD600] uppercase tracking-[0.4em] hover:bg-[#FFD600]/20 transition-all">Flip the Coin</motion.button>)}
+              {tossFlipPhase === 'FLIPPING' && (<p className="text-[11px] font-black uppercase tracking-[0.4em] shimmer-text">Flipping...</p>)}
+              {tossFlipPhase === 'RESULT' && (<motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', damping: 15 }}><p className="text-[11px] font-black text-[#39FF14] uppercase tracking-[0.4em]">Toss Complete!</p><p className="text-[8px] font-black text-white/20 uppercase tracking-[0.3em] mt-2">Proceeding to decision...</p></motion.div>)}
+            </motion.div>
+          </div>
+        )}
         {status === 'TOSS' && (
           <div className="flex-1 flex flex-col h-full overflow-hidden">
              <div className="flex-1 overflow-y-auto p-6 space-y-12 no-scrollbar pb-32">
@@ -1225,7 +1304,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <div className="flex items-center justify-end px-5 pt-3 pb-0 shrink-0 space-x-2">
               <button onClick={openTransferModal} className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#FF003C]/10 border border-[#FF003C]/20 rounded-full text-[#FF003C] hover:bg-[#FF003C]/20 transition-all">
                 <Share2 size={10} />
-                <span className="text-[7px] font-black uppercase tracking-widest">Share Â· Hand Off</span>
+                <span className="text-[7px] font-black uppercase tracking-widest">Share ÃÂ· Hand Off</span>
               </button>
             </div>
             <div className="p-6 space-y-4 overflow-y-auto no-scrollbar flex-1 pb-10">
@@ -1265,9 +1344,9 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       <AnimatePresence>{selectionTarget && (<motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} className="fixed inset-0 z-[8000] bg-black flex flex-col p-8 pb-16"><div className="flex justify-between items-center mb-10 shrink-0"><div className="space-y-1"><h3 className="font-heading text-5xl uppercase italic tracking-tighter leading-none">SELECT PERSONNEL</h3><p className="text-[10px] font-black text-[#00F0FF] uppercase tracking-[0.3em]">{selectionTarget.replace('_', ' ')} REQUIRED</p></div><button onClick={() => setSelectionTarget(null)} className="p-4 bg-white/5 rounded-full"><X size={20} /></button></div><div className="flex-1 overflow-y-auto no-scrollbar space-y-4 pb-24">{getSquadForSelection().map(p => (<button key={p.id} onClick={() => { if(selectionTarget === 'FIELDER') handleFielderSelected(p.id); else { setMatch(m => ({ ...m, crease: { ...m.crease, [selectionTarget === 'STRIKER' || selectionTarget === 'NEW_BATSMAN' ? 'strikerId' : (selectionTarget === 'NON_STRIKER' ? 'nonStrikerId' : 'bowlerId')]: p.id } })); setSelectionTarget(null); } }} className="w-full p-6 bg-[#121212] border border-white/5 rounded-[32px] flex items-center justify-between group hover:border-[#00F0FF]/40 transition-all"><div className="flex items-center space-x-6"><div className="w-16 h-16 rounded-full bg-black border border-white/10 overflow-hidden shrink-0 group-hover:border-[#00F0FF]/40 transition-all"><img src={getPlayerAvatar(p)} className="w-full h-full object-cover" alt="" /></div><div className="text-left"><p className="font-bold text-xl uppercase tracking-tight">{p.name}</p><p className="text-[9px] font-black text-white/20 uppercase tracking-widest">{selectionTarget === 'FIELDER' ? 'FIELDING SQUADRON' : 'SQUAD MEMBER'}</p></div></div><ChevronRight className="text-white/10 group-hover:text-[#00F0FF]" /></button>))}</div></motion.div>)}</AnimatePresence>
       <AnimatePresence>{wicketWizard.open && (<motion.div initial={{ opacity: 0, y: '100%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '100%' }} className="fixed inset-0 z-[9000] bg-black flex flex-col p-8 pb-16"><div className="flex justify-between items-center mb-10 shrink-0"><div className="space-y-1"><h3 className="font-heading text-5xl uppercase italic tracking-tighter leading-none text-[#FF003C]">DISMISSAL HUB</h3><p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em]">SELECT WICKET TYPE</p></div><button onClick={() => setWicketWizard({ open: false })} className="p-4 bg-white/5 rounded-full"><X size={20} /></button></div><div className="grid grid-cols-2 gap-4 flex-1 overflow-y-auto no-scrollbar">{[{ label: 'BOWLED', icon: Disc, color: '#FF003C' }, { label: 'CAUGHT', icon: User, color: '#00F0FF' }, { label: 'LBW', icon: Shield, color: '#FFD600' }, { label: 'STUMPED', icon: Bolt, color: '#BC13FE' }, { label: 'RUN OUT', icon: Activity, color: '#39FF14' }, { label: 'HIT WICKET', icon: Target, color: '#FF6D00' }].map(w => (<button key={w.label} onClick={() => handleWicketAction(w.label)} className="p-8 bg-[#121212] border border-white/5 rounded-[40px] flex flex-col items-center justify-center space-y-4 group hover:border-white/20 transition-all"><w.icon size={32} style={{ color: w.color }} className="opacity-60 group-hover:opacity-100 transition-all" /><span className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 group-hover:text-white">{w.label}</span></button>))}</div></motion.div>)}</AnimatePresence>
       {/* Share Scorecard Modal */}
-      <AnimatePresence>{showShareModal && (<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowShareModal(false)} className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[9999] flex items-end sm:items-center justify-center p-6"><motion.div initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }} onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-[#121212] border border-white/10 rounded-[40px] p-8 space-y-6 shadow-2xl"><div className="flex items-center justify-between"><h3 className="font-heading text-4xl italic uppercase tracking-tighter">Share Scorecard</h3><button onClick={() => setShowShareModal(false)} className="p-2 text-white/30 hover:text-white transition-colors"><X size={20} /></button></div><div className="bg-black/50 border border-white/5 rounded-2xl p-4 max-h-48 overflow-y-auto no-scrollbar"><pre className="text-[10px] text-white/60 font-mono whitespace-pre-wrap leading-relaxed">{shareText}</pre></div><div className="space-y-3"><button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank'); }} className="w-full py-5 bg-[#25D366] text-black rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center space-x-3 shadow-lg shadow-[#25D366]/20 active:scale-95 transition-all"><span>ð±</span><span>Share on WhatsApp</span></button><button onClick={() => handleShareAction(shareText)} className={`w-full py-5 border-2 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center space-x-3 transition-all active:scale-95 ${shareCopied ? 'border-[#39FF14]/50 text-[#39FF14] bg-[#39FF14]/10' : 'border-white/10 text-white/50 bg-white/5 hover:bg-white/10'}`}>{shareCopied ? <><Check size={16} /><span>Copied to clipboard!</span></> : <><Share2 size={16} /><span>More Options Â· Copy Text</span></>}</button></div></motion.div></motion.div>)}</AnimatePresence>
+      <AnimatePresence>{showShareModal && (<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowShareModal(false)} className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[9999] flex items-end sm:items-center justify-center p-6"><motion.div initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }} onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-[#121212] border border-white/10 rounded-[40px] p-8 space-y-6 shadow-2xl"><div className="flex items-center justify-between"><h3 className="font-heading text-4xl italic uppercase tracking-tighter">Share Scorecard</h3><button onClick={() => setShowShareModal(false)} className="p-2 text-white/30 hover:text-white transition-colors"><X size={20} /></button></div><div className="bg-black/50 border border-white/5 rounded-2xl p-4 max-h-48 overflow-y-auto no-scrollbar"><pre className="text-[10px] text-white/60 font-mono whitespace-pre-wrap leading-relaxed">{shareText}</pre></div><div className="space-y-3"><button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank'); }} className="w-full py-5 bg-[#25D366] text-black rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center space-x-3 shadow-lg shadow-[#25D366]/20 active:scale-95 transition-all"><span>Ã°ÂÂÂ±</span><span>Share on WhatsApp</span></button><button onClick={() => handleShareAction(shareText)} className={`w-full py-5 border-2 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center space-x-3 transition-all active:scale-95 ${shareCopied ? 'border-[#39FF14]/50 text-[#39FF14] bg-[#39FF14]/10' : 'border-white/10 text-white/50 bg-white/5 hover:bg-white/10'}`}>{shareCopied ? <><Check size={16} /><span>Copied to clipboard!</span></> : <><Share2 size={16} /><span>More Options ÃÂ· Copy Text</span></>}</button></div></motion.div></motion.div>)}</AnimatePresence>
 
-      <AnimatePresence>{editingTeamId && (<motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} className="fixed inset-0 bg-black z-[9000] flex flex-col"><div className="h-14 flex items-center px-6 border-b border-white/5 bg-black/50 backdrop-blur-md shrink-0"><button onClick={() => setEditingTeamId(null)} className="p-2 -ml-2 text-white/40 hover:text-white transition-all"><ChevronLeft size={20} /></button><h3 className="ml-4 font-heading text-xl tracking-[0.1em] text-white uppercase italic">SQUADRON MANAGEMENT</h3></div><div className="flex-1 overflow-y-auto no-scrollbar p-8 min-h-0"><div className="space-y-10 pb-32"><div className="space-y-4"><div className="flex justify-between items-end"><div className="space-y-1"><h3 className="font-heading text-4xl italic uppercase leading-none">The Roster</h3><p className="text-[10px] font-black text-[#00F0FF] uppercase tracking-[0.3em]">{(getTeamObj(editingTeamId)?.squad || []).length} PERSONNEL ENLISTED</p></div><div className="flex space-x-2"><div className={`px-4 py-1.5 rounded-full border text-[8px] font-black uppercase tracking-widest ${isCaptainSelected(editingTeamId) ? 'bg-[#39FF14]/10 text-[#39FF14] border-[#39FF14]/20' : 'bg-[#FF003C]/10 text-[#FF003C] border-[#FF003C]/20 animate-pulse'}`}>{isCaptainSelected(editingTeamId) ? 'CAPTAIN' : 'CAPT REQ'}</div><div className={`px-4 py-1.5 rounded-full border text-[8px] font-black uppercase tracking-widest ${isWicketKeeperSelected(editingTeamId) ? 'bg-[#00F0FF]/10 text-[#00F0FF] border-[#00F0FF]/20' : 'bg-[#FF003C]/10 text-[#FF003C] border-[#FF003C]/20 animate-pulse'}`}>{isWicketKeeperSelected(editingTeamId) ? 'KEEPER' : 'WK REQ'}</div></div></div><div className="space-y-3">{(getTeamObj(editingTeamId)?.squad || []).length === 0 ? (<div className="py-20 text-center space-y-4 opacity-40 border-2 border-dashed border-white/10 rounded-[40px] flex flex-col items-center justify-center"><Users size={48} className="mb-2" /><p className="text-[10px] font-black uppercase tracking-[0.5em]">No Personnel Active</p></div>) : (getTeamObj(editingTeamId).squad.map((p) => (<div key={p.id} className={`p-6 rounded-[32px] border transition-all flex items-center justify-between ${p.isCaptain || p.isWicketKeeper ? 'bg-white/[0.04] border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.05)]' : 'bg-white/[0.02] border-white/5'}`}><div className="flex items-center space-x-5"><div className="flex flex-col space-y-2"><button onClick={() => handleSetCaptain(p.id, editingTeamId)} className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-all ${p.isCaptain ? 'bg-[#4DB6AC] border-[#4DB6AC] text-black shadow-lg' : 'bg-white/5 border-white/10 text-white/20 hover:text-[#4DB6AC]'}`}><Crown size={20} /></button><button onClick={() => handleSetWicketKeeper(p.id, editingTeamId)} className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-all ${p.isWicketKeeper ? 'bg-[#00F0FF] border-[#00F0FF] text-black shadow-lg' : 'bg-white/5 border-white/10 text-white/20 hover:text-[#00F0FF]'}`}><GloveIcon size={20} /></button></div><div className="text-left"><span className="text-lg font-black uppercase tracking-tight block leading-none">{p.name}</span><span className="text-[9px] font-bold text-white/30 uppercase tracking-[0.2em] mt-1 block">+91 {p.phone.slice(-4).padStart(p.phone.length, '*')}</span></div></div><button onClick={() => { setMatch(m => { const key = editingTeamId === 'A' ? 'teamA' : 'teamB'; return { ...m, teams: { ...m.teams, [key]: { ...m.teams[key], squad: m.teams[key].squad.filter(x => x.id !== p.id) } } }; }) }} className="text-white/10 hover:text-[#FF003C] transition-colors p-3"><Trash2 size={20} /></button></div>)))}</div></div><div className="space-y-6 pt-10 border-t border-white/5"><div className="flex items-center justify-between"><h3 className="font-heading text-4xl italic uppercase leading-none">New Recruitment</h3><button onClick={startQRScanner} className="flex items-center space-x-2 px-4 py-2 bg-[#00F0FF]/10 border border-[#00F0FF]/30 rounded-xl text-[#00F0FF] hover:bg-[#00F0FF]/20 transition-all"><Camera size={14} /><span className="text-[8px] font-black uppercase tracking-widest">Scan QR</span></button></div><div className="space-y-4"><div className="space-y-1.5"><label className="text-[8px] font-black text-[#00F0FF] uppercase tracking-[0.2em] ml-1">SEARCH OR ENTER ATHLETE</label>{selectedVaultPlayer ? (<motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex items-center justify-between bg-[#39FF14]/10 border border-[#39FF14]/40 rounded-2xl py-4 px-5"><div className="flex items-center space-x-3"><UserCheck size={18} className="text-[#39FF14] shrink-0" /><div><p className="text-sm font-black text-white uppercase">{selectedVaultPlayer.name}</p><p className="text-[9px] font-bold text-[#39FF14] mt-0.5">+91 Â·Â·{selectedVaultPlayer.phone.slice(-4)}</p></div></div><button onClick={handleClearVaultPlayer} className="p-2 text-white/30 hover:text-[#FF003C] transition-colors"><X size={16} /></button></motion.div>) : (<div className="relative"><User size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 z-10" /><input type="text" placeholder="NAME OR INITIALS (e.g. A D)" value={newName} onChange={(e) => setNewName(e.target.value.toUpperCase())} className="w-full bg-[#111] border border-white/10 rounded-2xl py-5 pl-16 pr-6 text-sm font-black text-white outline-none focus:border-[#00F0FF]/60 uppercase placeholder:text-white/10" /><AnimatePresence>{showPlayerDropdown && playerDropdownList.length > 0 && (<motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="absolute top-full left-0 right-0 mt-2 bg-[#1A1A1A] border border-white/10 rounded-2xl overflow-hidden z-50 shadow-2xl">{playerDropdownList.map((vp, vi) => (<button key={vp.phone} onClick={() => handleSelectVaultPlayer(vp)} className={`w-full flex items-center space-x-4 px-5 py-4 text-left hover:bg-white/5 transition-all ${vi > 0 ? 'border-t border-white/5' : ''}`}><div className="w-9 h-9 rounded-full bg-black border border-white/10 overflow-hidden shrink-0"><img src={getPlayerAvatar(vp)} className="w-full h-full object-cover" /></div><div className="flex-1 min-w-0"><p className="text-sm font-black text-white uppercase truncate">{vp.name}</p><p className="text-[9px] font-bold text-white/30 mt-0.5">+91 Â·Â·{vp.phone.slice(-4)}</p></div><CheckCircle2 size={14} className="text-[#00F0FF] shrink-0 opacity-60" /></button>))}</motion.div>)}</AnimatePresence></div>)}</div>{!selectedVaultPlayer && (<div className="space-y-1.5"><label className="text-[8px] font-black text-[#00F0FF] uppercase tracking-[0.2em] ml-1">MOBILE UPLINK (10 DIGITS)</label><div className="relative"><Smartphone size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40" /><input type="tel" maxLength={10} placeholder="10-DIGIT PHONE NUMBER" value={phoneQuery} onChange={(e) => { const val = e.target.value.replace(/\D/g, ''); if(val.length <= 10) setPhoneQuery(val); }} className="w-full bg-[#111] border border-white/10 rounded-2xl py-5 pl-16 pr-6 text-sm font-black text-white outline-none focus:border-[#00F0FF]/60 placeholder:text-white/10" /></div></div>)}</div><MotionButton disabled={isAddPlayerDisabled} onClick={() => { if(!isAddPlayerDisabled) { handleEnlistNewPlayer(newName, phoneQuery, editingTeamId); setNewName(''); setPhoneQuery(''); setSelectedVaultPlayer(null); } }} className={`w-full !py-6 flex items-center justify-center space-x-3 !rounded-[24px] transition-all ${isAddPlayerDisabled ? 'bg-white/5 text-white/10 opacity-50 border-white/5' : 'bg-white text-black shadow-xl shadow-white/5 border-transparent'}`}><Plus size={20} /><span className="text-[11px] font-black tracking-widest">ENLIST PERSONNEL</span></MotionButton></div></div></div><div className="p-10 bg-black/95 backdrop-blur-xl border-t border-white/5 shrink-0 pb-16"><MotionButton disabled={!isCaptainSelected(editingTeamId) || !isWicketKeeperSelected(editingTeamId) || (getTeamObj(editingTeamId)?.squad || []).length === 0} onClick={() => setEditingTeamId(null)} className={`w-full !py-6 !rounded-[24px] font-black tracking-[0.5em] text-xs transition-all ${isCaptainSelected(editingTeamId) && isWicketKeeperSelected(editingTeamId) ? 'bg-[#39FF14] text-black shadow-[0_15px_40px_rgba(57,255,20,0.2)]' : 'bg-white/5 text-white/20 grayscale border-white/5'}`}>SAVE SQUADRON</MotionButton></div></motion.div>)}</AnimatePresence>
+      <AnimatePresence>{editingTeamId && (<motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} className="fixed inset-0 bg-black z-[9000] flex flex-col"><div className="h-14 flex items-center px-6 border-b border-white/5 bg-black/50 backdrop-blur-md shrink-0"><button onClick={() => setEditingTeamId(null)} className="p-2 -ml-2 text-white/40 hover:text-white transition-all"><ChevronLeft size={20} /></button><h3 className="ml-4 font-heading text-xl tracking-[0.1em] text-white uppercase italic">SQUADRON MANAGEMENT</h3></div><div className="flex-1 overflow-y-auto no-scrollbar p-8 min-h-0"><div className="space-y-10 pb-32"><div className="space-y-4"><div className="flex justify-between items-end"><div className="space-y-1"><h3 className="font-heading text-4xl italic uppercase leading-none">The Roster</h3><p className="text-[10px] font-black text-[#00F0FF] uppercase tracking-[0.3em]">{(getTeamObj(editingTeamId)?.squad || []).length} PERSONNEL ENLISTED</p></div><div className="flex space-x-2"><div className={`px-4 py-1.5 rounded-full border text-[8px] font-black uppercase tracking-widest ${isCaptainSelected(editingTeamId) ? 'bg-[#39FF14]/10 text-[#39FF14] border-[#39FF14]/20' : 'bg-[#FF003C]/10 text-[#FF003C] border-[#FF003C]/20 animate-pulse'}`}>{isCaptainSelected(editingTeamId) ? 'CAPTAIN' : 'CAPT REQ'}</div><div className={`px-4 py-1.5 rounded-full border text-[8px] font-black uppercase tracking-widest ${isWicketKeeperSelected(editingTeamId) ? 'bg-[#00F0FF]/10 text-[#00F0FF] border-[#00F0FF]/20' : 'bg-[#FF003C]/10 text-[#FF003C] border-[#FF003C]/20 animate-pulse'}`}>{isWicketKeeperSelected(editingTeamId) ? 'KEEPER' : 'WK REQ'}</div></div></div><div className="space-y-3">{(getTeamObj(editingTeamId)?.squad || []).length === 0 ? (<div className="py-20 text-center space-y-4 opacity-40 border-2 border-dashed border-white/10 rounded-[40px] flex flex-col items-center justify-center"><Users size={48} className="mb-2" /><p className="text-[10px] font-black uppercase tracking-[0.5em]">No Personnel Active</p></div>) : (getTeamObj(editingTeamId).squad.map((p) => (<div key={p.id} className={`p-6 rounded-[32px] border transition-all flex items-center justify-between ${p.isCaptain || p.isWicketKeeper ? 'bg-white/[0.04] border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.05)]' : 'bg-white/[0.02] border-white/5'}`}><div className="flex items-center space-x-5"><div className="flex flex-col space-y-2"><button onClick={() => handleSetCaptain(p.id, editingTeamId)} className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-all ${p.isCaptain ? 'bg-[#4DB6AC] border-[#4DB6AC] text-black shadow-lg' : 'bg-white/5 border-white/10 text-white/20 hover:text-[#4DB6AC]'}`}><Crown size={20} /></button><button onClick={() => handleSetWicketKeeper(p.id, editingTeamId)} className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-all ${p.isWicketKeeper ? 'bg-[#00F0FF] border-[#00F0FF] text-black shadow-lg' : 'bg-white/5 border-white/10 text-white/20 hover:text-[#00F0FF]'}`}><GloveIcon size={20} /></button></div><div className="text-left"><span className="text-lg font-black uppercase tracking-tight block leading-none">{p.name}</span><span className="text-[9px] font-bold text-white/30 uppercase tracking-[0.2em] mt-1 block">+91 {p.phone.slice(-4).padStart(p.phone.length, '*')}</span></div></div><button onClick={() => { setMatch(m => { const key = editingTeamId === 'A' ? 'teamA' : 'teamB'; return { ...m, teams: { ...m.teams, [key]: { ...m.teams[key], squad: m.teams[key].squad.filter(x => x.id !== p.id) } } }; }) }} className="text-white/10 hover:text-[#FF003C] transition-colors p-3"><Trash2 size={20} /></button></div>)))}</div></div><div className="space-y-6 pt-10 border-t border-white/5"><div className="flex items-center justify-between"><h3 className="font-heading text-4xl italic uppercase leading-none">New Recruitment</h3><button onClick={startQRScanner} className="flex items-center space-x-2 px-4 py-2 bg-[#00F0FF]/10 border border-[#00F0FF]/30 rounded-xl text-[#00F0FF] hover:bg-[#00F0FF]/20 transition-all"><Camera size={14} /><span className="text-[8px] font-black uppercase tracking-widest">Scan QR</span></button></div><div className="space-y-4"><div className="space-y-1.5"><label className="text-[8px] font-black text-[#00F0FF] uppercase tracking-[0.2em] ml-1">SEARCH OR ENTER ATHLETE</label>{selectedVaultPlayer ? (<motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex items-center justify-between bg-[#39FF14]/10 border border-[#39FF14]/40 rounded-2xl py-4 px-5"><div className="flex items-center space-x-3"><UserCheck size={18} className="text-[#39FF14] shrink-0" /><div><p className="text-sm font-black text-white uppercase">{selectedVaultPlayer.name}</p><p className="text-[9px] font-bold text-[#39FF14] mt-0.5">+91 ÃÂ·ÃÂ·{selectedVaultPlayer.phone.slice(-4)}</p></div></div><button onClick={handleClearVaultPlayer} className="p-2 text-white/30 hover:text-[#FF003C] transition-colors"><X size={16} /></button></motion.div>) : (<div className="relative"><User size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40 z-10" /><input type="text" placeholder="NAME OR INITIALS (e.g. A D)" value={newName} onChange={(e) => setNewName(e.target.value.toUpperCase())} className="w-full bg-[#111] border border-white/10 rounded-2xl py-5 pl-16 pr-6 text-sm font-black text-white outline-none focus:border-[#00F0FF]/60 uppercase placeholder:text-white/10" /><AnimatePresence>{showPlayerDropdown && playerDropdownList.length > 0 && (<motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="absolute top-full left-0 right-0 mt-2 bg-[#1A1A1A] border border-white/10 rounded-2xl overflow-hidden z-50 shadow-2xl">{playerDropdownList.map((vp, vi) => (<button key={vp.phone} onClick={() => handleSelectVaultPlayer(vp)} className={`w-full flex items-center space-x-4 px-5 py-4 text-left hover:bg-white/5 transition-all ${vi > 0 ? 'border-t border-white/5' : ''}`}><div className="w-9 h-9 rounded-full bg-black border border-white/10 overflow-hidden shrink-0"><img src={getPlayerAvatar(vp)} className="w-full h-full object-cover" /></div><div className="flex-1 min-w-0"><p className="text-sm font-black text-white uppercase truncate">{vp.name}</p><p className="text-[9px] font-bold text-white/30 mt-0.5">+91 ÃÂ·ÃÂ·{vp.phone.slice(-4)}</p></div><CheckCircle2 size={14} className="text-[#00F0FF] shrink-0 opacity-60" /></button>))}</motion.div>)}</AnimatePresence></div>)}</div>{!selectedVaultPlayer && (<div className="space-y-1.5"><label className="text-[8px] font-black text-[#00F0FF] uppercase tracking-[0.2em] ml-1">MOBILE UPLINK (10 DIGITS)</label><div className="relative"><Smartphone size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-white/40" /><input type="tel" maxLength={10} placeholder="10-DIGIT PHONE NUMBER" value={phoneQuery} onChange={(e) => { const val = e.target.value.replace(/\D/g, ''); if(val.length <= 10) setPhoneQuery(val); }} className="w-full bg-[#111] border border-white/10 rounded-2xl py-5 pl-16 pr-6 text-sm font-black text-white outline-none focus:border-[#00F0FF]/60 placeholder:text-white/10" /></div></div>)}</div><MotionButton disabled={isAddPlayerDisabled} onClick={() => { if(!isAddPlayerDisabled) { handleEnlistNewPlayer(newName, phoneQuery, editingTeamId); setNewName(''); setPhoneQuery(''); setSelectedVaultPlayer(null); } }} className={`w-full !py-6 flex items-center justify-center space-x-3 !rounded-[24px] transition-all ${isAddPlayerDisabled ? 'bg-white/5 text-white/10 opacity-50 border-white/5' : 'bg-white text-black shadow-xl shadow-white/5 border-transparent'}`}><Plus size={20} /><span className="text-[11px] font-black tracking-widest">ENLIST PERSONNEL</span></MotionButton></div></div></div><div className="p-10 bg-black/95 backdrop-blur-xl border-t border-white/5 shrink-0 pb-16"><MotionButton disabled={!isCaptainSelected(editingTeamId) || !isWicketKeeperSelected(editingTeamId) || (getTeamObj(editingTeamId)?.squad || []).length === 0} onClick={() => setEditingTeamId(null)} className={`w-full !py-6 !rounded-[24px] font-black tracking-[0.5em] text-xs transition-all ${isCaptainSelected(editingTeamId) && isWicketKeeperSelected(editingTeamId) ? 'bg-[#39FF14] text-black shadow-[0_15px_40px_rgba(57,255,20,0.2)]' : 'bg-white/5 text-white/20 grayscale border-white/5'}`}>SAVE SQUADRON</MotionButton></div></motion.div>)}</AnimatePresence>
 
       {/* QR Scanner Modal */}
       <AnimatePresence>
@@ -1311,7 +1390,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </motion.div>
         )}
       </AnimatePresence>
-      {/* ââ Transfer Scoring / Live Broadcast Modal ââ */}
+      {/* Ã¢ÂÂÃ¢ÂÂ Transfer Scoring / Live Broadcast Modal Ã¢ÂÂÃ¢ÂÂ */}
       <AnimatePresence>
         {showTransferModal && (
           <motion.div
@@ -1336,7 +1415,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     onClick={() => setTransferTab(tab)}
                     className={`flex-1 py-5 text-[10px] font-black uppercase tracking-widest transition-all ${transferTab === tab ? 'text-[#FF003C] border-b-2 border-[#FF003C]' : 'text-white/20'}`}
                   >
-                    {tab === 'HANDOFF' ? 'ð± Hand Off Scoring' : 'ð¡ Live Broadcast'}
+                    {tab === 'HANDOFF' ? 'Ã°ÂÂÂ± Hand Off Scoring' : 'Ã°ÂÂÂ¡ Live Broadcast'}
                   </button>
                 ))}
               </div>
@@ -1346,7 +1425,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   <>
                     <div className="text-center space-y-1">
                       <h3 className="font-heading text-3xl italic uppercase text-white">Transfer Scorer</h3>
-                      <p className="text-[9px] font-black text-white/30 uppercase tracking-widest">New scorer scans to take over Â· all data transfers instantly</p>
+                      <p className="text-[9px] font-black text-white/30 uppercase tracking-widest">New scorer scans to take over ÃÂ· all data transfers instantly</p>
                     </div>
                     {handoffQRUrl ? (
                       <div className="flex justify-center">
@@ -1368,14 +1447,14 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                       {transferLinkCopied ? <><Check size={14} /><span>Copied!</span></> : <><Share2 size={14} /><span>Copy Hand-Off Link</span></>}
                     </button>
                     <p className="text-[8px] text-white/20 text-center uppercase tracking-widest leading-relaxed">
-                      The new scorer opens this link and taps "Resume Match". Full match state transfers over the internet â requires both phones to be online.
+                      The new scorer opens this link and taps "Resume Match". Full match state transfers over the internet Ã¢ÂÂ requires both phones to be online.
                     </p>
                   </>
                 ) : (
                   <>
                     <div className="text-center space-y-1">
                       <h3 className="font-heading text-3xl italic uppercase text-white">Live Broadcast</h3>
-                      <p className="text-[9px] font-black text-white/30 uppercase tracking-widest">Anyone scans to watch Â· auto-refreshes every 10 s</p>
+                      <p className="text-[9px] font-black text-white/30 uppercase tracking-widest">Anyone scans to watch ÃÂ· auto-refreshes every 10 s</p>
                     </div>
                     {broadcastQRUrl ? (
                       <div className="flex justify-center">
@@ -1397,7 +1476,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                       {transferLinkCopied ? <><Check size={14} /><span>Copied!</span></> : <><Share2 size={14} /><span>Copy Broadcast Link</span></>}
                     </button>
                     <p className="text-[8px] text-white/20 text-center uppercase tracking-widest leading-relaxed">
-                      Share this link with anyone. They open it in any browser â no app or login needed â and see the live score update automatically.
+                      Share this link with anyone. They open it in any browser Ã¢ÂÂ no app or login needed Ã¢ÂÂ and see the live score update automatically.
                     </p>
                   </>
                 )}
