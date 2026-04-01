@@ -1,0 +1,7 @@
+{
+  "name": "22Yards",
+  "description": "A world-class, aesthetic, dark-mode cricket management ecosystem featuring professional sports analytics, real-time scoring, and a royal marketplace.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
