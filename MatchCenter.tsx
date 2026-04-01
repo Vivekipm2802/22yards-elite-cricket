@@ -320,6 +320,66 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     commitBall(0, undefined, true, wType, fielderId);
   };
 
+  const handleUndo = () => {
+    if (!match.history || match.history.length === 0) return;
+
+    setMatch(m => {
+      const lastBall = m.history[m.history.length - 1];
+      if (!lastBall) return m;
+
+      const battingTeamKey = m.teams.battingTeamId === 'A' ? 'teamA' : 'teamB';
+      const bowlingTeamKey = m.teams.bowlingTeamId === 'A' ? 'teamA' : 'teamB';
+
+      const updatedBattingSquad = (m.teams[battingTeamKey]?.squad || []).map(p => {
+        if (p.id === lastBall.strikerId) {
+          return {
+            ...p,
+            runs: Math.max(0, (p.runs || 0) - (lastBall.runsScored || 0)),
+            balls: Math.max(0, (p.balls || 0) - (!lastBall.type || lastBall.type === 'LEGAL' ? 1 : 0)),
+            fours: lastBall.runsScored === 4 && (!lastBall.type || lastBall.type === 'LEGAL') ? Math.max(0, (p.fours || 0) - 1) : (p.fours || 0),
+            sixes: lastBall.runsScored === 6 && (!lastBall.type || lastBall.type === 'LEGAL') ? Math.max(0, (p.sixes || 0) - 1) : (p.sixes || 0),
+            isOut: false,
+            wicketType: undefined,
+          };
+        }
+        if (p.id === lastBall.nonStrikerId && (lastBall.runsScored === 2 || lastBall.runsScored === 3)) {
+          return {
+            ...p,
+            balls: Math.max(0, (p.balls || 0) - 1),
+          };
+        }
+        return p;
+      });
+
+      const updatedBowlingSquad = (m.teams[bowlingTeamKey]?.squad || []).map(p => {
+        if (p.id === lastBall.bowlerId) {
+          return {
+            ...p,
+            wickets: lastBall.isWicket ? Math.max(0, (p.wickets || 0) - 1) : (p.wickets || 0),
+            runs_conceded: Math.max(0, (p.runs_conceded || 0) - (lastBall.runsScored || 0) - (lastBall.type === 'WD' || lastBall.type === 'NB' ? 1 : 0)),
+            balls_bowled: Math.max(0, (p.balls_bowled || 0) - (lastBall.type === 'WD' || lastBall.type === 'NB' ? 0 : 1)),
+          };
+        }
+        return p;
+      });
+
+      return {
+        ...m,
+        teams: {
+          ...m.teams,
+          [battingTeamKey]: { ...m.teams[battingTeamKey], squad: updatedBattingSquad },
+          [bowlingTeamKey]: { ...m.teams[bowlingTeamKey], squad: updatedBowlingSquad },
+        },
+        liveScore: {
+          runs: Math.max(0, m.liveScore.runs - (lastBall.runsScored || 0) - (lastBall.type === 'WD' || lastBall.type === 'NB' ? 1 : 0)),
+          wickets: Math.max(0, m.liveScore.wickets - (lastBall.isWicket ? 1 : 0)),
+          balls: Math.max(0, m.liveScore.balls - (lastBall.type === 'WD' || lastBall.type === 'NB' ? 0 : 1)),
+        },
+        history: m.history.slice(0, -1),
+      };
+    });
+  };
+
   const persistToGlobalVault = (finalMatchState: MatchState, winnerName = '', winnerMargin = '') => {
     if (!userData?.phone) return;
 
@@ -491,23 +551,30 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         return p;
       });
 
-      const ballEvent: BallEvent = {
-        ballNum: m.history.length + 1,
-        runs,
-        extra,
-        isWicket: isWicket || false,
-        wicketType,
-        strikerId: m.crease.strikerId,
-        nonStrikerId: m.crease.nonStrikerId,
-        bowlerId: m.crease.bowlerId,
-        fielderId,
-        innings: m.currentInnings,
-      };
-
       const newLiveScore = {
         runs: m.liveScore.runs + runs + (extra === 'WD' || extra === 'NB' ? 1 : 0),
         wickets: m.liveScore.wickets + (isWicket ? 1 : 0),
         balls: m.liveScore.balls + (extra === 'WD' || extra === 'NB' ? 0 : 1),
+      };
+
+      const ballEvent: BallEvent = {
+        ballId: `${m.matchId}-${m.currentInnings}-${m.history.length}`,
+        overNumber: Math.floor(m.liveScore.balls / 6),
+        ballNumber: (m.liveScore.balls % 6) + 1,
+        bowlerId: m.crease.bowlerId!,
+        strikerId: m.crease.strikerId!,
+        fielderId,
+        runsScored: runs,
+        totalValue: runs + (extra === 'WD' || extra === 'NB' ? 1 : 0),
+        extras: extra === 'WD' || extra === 'NB' || extra === 'BYE' || extra === 'LB' ? 1 : 0,
+        isWicket: isWicket || false,
+        type: extra ? (extra as any) : 'LEGAL',
+        zone: undefined,
+        wicketType,
+        innings: m.currentInnings,
+        teamId: m.teams.battingTeamId,
+        teamTotalAtThisBall: newLiveScore.runs,
+        wicketsAtThisBall: newLiveScore.wickets,
       };
 
       const totalOvers = Math.floor(newLiveScore.balls / 6);
@@ -521,6 +588,16 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         newCurrentInnings = 2;
         setOverlayAnim('INNINGS_BREAK');
         setTimeout(() => setOverlayAnim(null), 3000);
+      }
+
+      if (shouldTransition && m.currentInnings === 2) {
+        newStatus = 'COMPLETED';
+        setTimeout(() => setStatus('SUMMARY'), 100);
+      }
+
+      if (m.currentInnings === 2 && m.config.target && newLiveScore.runs >= m.config.target) {
+        newStatus = 'COMPLETED';
+        setTimeout(() => setStatus('SUMMARY'), 100);
       }
 
       return {
@@ -592,6 +669,118 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   const innings1TeamId = match.currentInnings === 1 ? match.teams.battingTeamId : match.teams.bowlingTeamId;
   const innings2TeamId = match.currentInnings === 1 ? match.teams.bowlingTeamId : match.teams.battingTeamId;
+
+  // Squad Editor Modal Helper Functions
+  const handleEnlistNewPlayer = () => {
+    if (!editingTeamId || !newName.trim()) return;
+    const key = editingTeamId === 'A' ? 'teamA' : 'teamB';
+    const newPlayer = {
+      id: generatePlayerId(),
+      name: newName.trim(),
+      phone: phoneQuery,
+      isCaptain: false,
+      isWicketKeeper: false,
+      runs: 0, balls: 0, fours: 0, sixes: 0, isOut: false,
+      wickets: 0, runs_conceded: 0, balls_bowled: 0, catches: 0, stumpings: 0, run_outs: 0,
+    };
+    setMatch(m => ({
+      ...m,
+      teams: { ...m.teams, [key]: { ...m.teams[key], squad: [...(m.teams[key].squad || []), newPlayer] } }
+    }));
+    setNewName('');
+    setPhoneQuery('');
+    setSelectedVaultPlayer(null);
+  };
+
+  const handleSetCaptain = (playerId: PlayerID) => {
+    if (!editingTeamId) return;
+    const key = editingTeamId === 'A' ? 'teamA' : 'teamB';
+    setMatch(m => ({
+      ...m,
+      teams: {
+        ...m.teams,
+        [key]: {
+          ...m.teams[key],
+          squad: (m.teams[key].squad || []).map(p => ({ ...p, isCaptain: p.id === playerId }))
+        }
+      }
+    }));
+  };
+
+  const handleSetWicketKeeper = (playerId: PlayerID) => {
+    if (!editingTeamId) return;
+    const key = editingTeamId === 'A' ? 'teamA' : 'teamB';
+    setMatch(m => ({
+      ...m,
+      teams: {
+        ...m.teams,
+        [key]: {
+          ...m.teams[key],
+          squad: (m.teams[key].squad || []).map(p => ({ ...p, isWicketKeeper: p.id === playerId }))
+        }
+      }
+    }));
+  };
+
+  const isCaptainSelected = () => {
+    if (!editingTeamId) return false;
+    const key = editingTeamId === 'A' ? 'teamA' : 'teamB';
+    return (match.teams[key]?.squad || []).some(p => p.isCaptain);
+  };
+
+  const isWicketKeeperSelected = () => {
+    if (!editingTeamId) return false;
+    const key = editingTeamId === 'A' ? 'teamA' : 'teamB';
+    return (match.teams[key]?.squad || []).some(p => p.isWicketKeeper);
+  };
+
+  const handleSelectVaultPlayer = (player: any) => {
+    setSelectedVaultPlayer(player);
+    setNewName(player.name);
+    setPhoneQuery(player.phone || '');
+    setShowPlayerDropdown(false);
+  };
+
+  const handleClearVaultPlayer = () => {
+    setSelectedVaultPlayer(null);
+    setNewName('');
+    setPhoneQuery('');
+  };
+
+  const startQRScanner = () => {
+    setShowQRScanner(true);
+    setQrScanStatus('SCANNING');
+  };
+
+  const closeQRScanner = () => {
+    setShowQRScanner(false);
+  };
+
+  const handleShareAction = (action: string) => {
+    if (action === 'whatsapp') {
+      const text = encodeURIComponent(shareText);
+      window.open(`https://wa.me/?text=${text}`);
+    } else if (action === 'copy') {
+      navigator.clipboard.writeText(shareText);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    }
+  };
+
+  const copyTransferLink = () => {
+    const link = transferTab === 'HANDOFF' ? handoffQRUrl : broadcastQRUrl;
+    if (link) {
+      navigator.clipboard.writeText(link);
+      setTransferLinkCopied(true);
+      setTimeout(() => setTransferLinkCopied(false), 2000);
+    }
+  };
+
+  const openTransferModal = () => {
+    setShowTransferModal(true);
+  };
+
+  const isAddPlayerDisabled = !newName.trim();
 
   return (
     <div className="h-full w-full bg-[#050505] text-white flex flex-col overflow-hidden relative font-sans max-h-[100dvh]">
@@ -1299,15 +1488,17 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 ))}
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 <KeypadButton onClick={() => setPendingExtra('WD')} bg="#FF6D00" color="#050505" active={pendingExtra === 'WD'}>WD</KeypadButton>
                 <KeypadButton onClick={() => setPendingExtra('NB')} bg="#FF6D00" color="#050505" active={pendingExtra === 'NB'}>NB</KeypadButton>
                 <KeypadButton onClick={() => setPendingExtra('BYE')} bg="#FF6D00" color="#050505" active={pendingExtra === 'BYE'}>BYE</KeypadButton>
+                <KeypadButton onClick={() => setPendingExtra('LB')} bg="#FF6D00" color="#050505" active={pendingExtra === 'LB'}>LB</KeypadButton>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <KeypadButton onClick={() => setWicketWizard({ open: true })} bg="#FF003C" color="#FFF">WICKET</KeypadButton>
-                <KeypadButton onClick={() => {}} bg="white/5" color="white/30" disabled>UNDO</KeypadButton>
+              <div className="grid grid-cols-4 gap-2">
+                <KeypadButton onClick={() => setWicketWizard({ open: true })} bg="#FF003C" color="#FFF" span={2}>WICKET</KeypadButton>
+                <KeypadButton onClick={() => {}} bg="white/5" color="white/30" disabled>SWAP</KeypadButton>
+                <KeypadButton onClick={handleUndo} disabled={!match.history || match.history.length === 0} bg={CYBER_COLORS.grey} color={CYBER_COLORS.orange}>UNDO</KeypadButton>
               </div>
             </div>
 
@@ -1360,13 +1551,20 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <h2 className="font-heading text-6xl uppercase italic text-[#00F0FF]">INNINGS END</h2>
               <div className="p-8 rounded-[40px] bg-white/5 border border-white/10 space-y-4">
                 <p className="text-[12px] font-black text-white/40 uppercase tracking-[0.3em]">Inning 1 Summary</p>
-                <h3 className="font-heading text-4xl uppercase italic">{getTeamObj(match.teams.battingTeamId).name}</h3>
+                <h3 className="font-heading text-4xl uppercase italic">{getTeamObj(match.teams.battingTeamId)?.name || 'Team'}</h3>
                 <p className="font-numbers text-5xl font-black text-[#00F0FF]">{match.liveScore.runs}/{match.liveScore.wickets}</p>
                 <p className="text-[11px] text-white/40">in {Math.floor(match.liveScore.balls / 6)}.{match.liveScore.balls % 6} overs</p>
               </div>
               <motion.button
                 onClick={() => {
-                  setMatch(m => ({ ...m, teams: { ...m.teams, battingTeamId: m.teams.bowlingTeamId, bowlingTeamId: m.teams.battingTeamId }, liveScore: { runs: 0, wickets: 0, balls: 0 }, crease: { strikerId: null, nonStrikerId: null, bowlerId: null, previousBowlerId: null } }));
+                  setMatch(m => ({
+                    ...m,
+                    config: { ...m.config, target: m.liveScore.runs + 1, innings1Score: m.liveScore.runs, innings1Wickets: m.liveScore.wickets, innings1Balls: m.liveScore.balls },
+                    teams: { ...m.teams, battingTeamId: m.teams.bowlingTeamId, bowlingTeamId: m.teams.battingTeamId },
+                    liveScore: { runs: 0, wickets: 0, balls: 0 },
+                    crease: { strikerId: null, nonStrikerId: null, bowlerId: null, previousBowlerId: null },
+                    currentInnings: 2,
+                  }));
                   setStatus('OPENERS');
                 }}
                 whileHover={{ scale: 1.05 }}
@@ -1458,6 +1656,346 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </div>
         )}
       </div>
+
+      {/* SQUAD EDITOR MODAL */}
+      <AnimatePresence>
+        {editingTeamId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[4000] bg-black/95 flex items-end md:items-center justify-center p-4 md:p-6"
+          >
+            <motion.div
+              initial={{ y: 100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 100, opacity: 0 }}
+              className="w-full max-w-2xl bg-[#0A0A0A] border border-white/10 rounded-[40px] overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <div className="p-6 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+                <button onClick={() => setEditingTeamId(null)} className="p-2 -ml-2 text-[#00F0FF] hover:bg-white/5 rounded-full">
+                  <ChevronLeft size={20} />
+                </button>
+                <h3 className="font-heading text-xl uppercase italic">{getTeamObj(editingTeamId)?.name || 'Squad Editor'}</h3>
+                <div className="w-10" />
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Current Squad */}
+                <div className="space-y-3">
+                  <p className="text-[11px] font-black text-white/40 uppercase tracking-[0.2em]">Current Squad</p>
+                  <div className="space-y-2">
+                    {(getTeamObj(editingTeamId)?.squad || []).map((player) => (
+                      <div key={player.id} className="p-3 rounded-[16px] bg-white/5 border border-white/10 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <img src={getPlayerAvatar(player)} alt={player.name} className="w-8 h-8 rounded-full" />
+                          <div>
+                            <p className="text-[10px] font-black text-white">{player.name}</p>
+                            <p className="text-[8px] text-white/40">{player.phone || 'No phone'}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {player.isCaptain && <Crown size={14} className="text-[#FFD600]" />}
+                          {player.isWicketKeeper && <GloveIcon size={14} />}
+                          <button onClick={() => setMatch(m => {
+                            const key = editingTeamId === 'A' ? 'teamA' : 'teamB';
+                            return { ...m, teams: { ...m.teams, [key]: { ...m.teams[key], squad: m.teams[key].squad.filter(p => p.id !== player.id) } } };
+                          })} className="p-1 text-[#FF003C] hover:bg-white/5 rounded">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* New Recruitment */}
+                <div className="space-y-3 p-4 rounded-[24px] bg-white/5 border border-white/10">
+                  <p className="text-[11px] font-black text-[#00F0FF] uppercase tracking-[0.2em]">New Recruitment</p>
+                  <input
+                    type="text"
+                    placeholder="Player name"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-[12px] bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/30 outline-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Phone (optional)"
+                    value={phoneQuery}
+                    onChange={(e) => setPhoneQuery(e.target.value)}
+                    className="w-full px-3 py-2 rounded-[12px] bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/30 outline-none"
+                  />
+                  <button
+                    onClick={startQRScanner}
+                    className="w-full py-2 rounded-[12px] bg-white/10 border border-white/20 text-[12px] font-black text-[#00F0FF] uppercase hover:bg-white/15 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Camera size={14} /> Scan QR
+                  </button>
+                </div>
+
+                {/* Enlist Button */}
+                <button
+                  onClick={handleEnlistNewPlayer}
+                  disabled={isAddPlayerDisabled}
+                  className={`w-full py-3 rounded-[20px] font-black uppercase text-[12px] tracking-[0.2em] transition-all ${
+                    isAddPlayerDisabled
+                      ? 'bg-white/5 text-white/30'
+                      : 'bg-[#00F0FF] text-black hover:shadow-[0_0_20px_rgba(0,240,255,0.3)]'
+                  }`}
+                >
+                  Enlist Personnel
+                </button>
+
+                {/* Captain & Keeper Selection */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => {
+                      const captain = (getTeamObj(editingTeamId)?.squad || []).find(p => p.isCaptain);
+                      if (captain) handleSetCaptain(captain.id);
+                    }}
+                    className={`py-2 rounded-[12px] font-black text-[11px] uppercase tracking-[0.1em] border ${
+                      isCaptainSelected()
+                        ? 'bg-[#FFD600]/20 border-[#FFD600] text-[#FFD600]'
+                        : 'bg-white/5 border-white/10 text-white/40'
+                    }`}
+                  >
+                    <Crown size={12} className="inline mr-1" /> Captain
+                  </button>
+                  <button
+                    onClick={() => {
+                      const keeper = (getTeamObj(editingTeamId)?.squad || []).find(p => p.isWicketKeeper);
+                      if (keeper) handleSetWicketKeeper(keeper.id);
+                    }}
+                    className={`py-2 rounded-[12px] font-black text-[11px] uppercase tracking-[0.1em] border ${
+                      isWicketKeeperSelected()
+                        ? 'bg-[#00F0FF]/20 border-[#00F0FF] text-[#00F0FF]'
+                        : 'bg-white/5 border-white/10 text-white/40'
+                    }`}
+                  >
+                    <GloveIcon size={12} className="inline mr-1" /> Keeper
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-white/5 flex gap-3">
+                <button
+                  onClick={() => setEditingTeamId(null)}
+                  className="flex-1 py-3 rounded-[20px] bg-white/5 border border-white/10 font-black text-[11px] uppercase text-white hover:bg-white/10 transition-all"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    if (isCaptainSelected() && isWicketKeeperSelected()) {
+                      setEditingTeamId(null);
+                    }
+                  }}
+                  disabled={!isCaptainSelected() || !isWicketKeeperSelected()}
+                  className="flex-1 py-3 rounded-[20px] bg-[#39FF14] text-black font-black text-[11px] uppercase disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Save Squadron
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* LIVE SCORECARD MODAL */}
+      <AnimatePresence>
+        {showLiveScorecard && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowLiveScorecard(false)}
+            className="fixed inset-0 z-[4000] bg-black/95 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-2xl bg-[#0A0A0A] border border-white/10 rounded-[40px] overflow-hidden max-h-[80vh] overflow-y-auto p-6 space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="font-heading text-xl uppercase italic text-[#00F0FF]">Live Scorecard</h3>
+                <button onClick={() => setShowLiveScorecard(false)} className="p-2 text-white/40 hover:text-white">
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Batting Team */}
+              <div className="space-y-3">
+                <p className="text-[11px] font-black text-[#00F0FF] uppercase tracking-[0.2em]">Batting</p>
+                <div className="space-y-2">
+                  {(match.teams[match.teams.battingTeamId === 'A' ? 'teamA' : 'teamB']?.squad || []).map((player) => (
+                    <div key={player.id} className="p-3 rounded-[16px] bg-white/5 border border-white/10 flex justify-between items-center">
+                      <p className="text-[10px] font-black text-white">{player.name}</p>
+                      <p className="text-[10px] font-numbers text-[#00F0FF]">{player.runs}({player.balls}) {player.fours > 0 ? `${player.fours}x4` : ''} {player.sixes > 0 ? `${player.sixes}x6` : ''}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Bowling Team */}
+              <div className="space-y-3">
+                <p className="text-[11px] font-black text-[#39FF14] uppercase tracking-[0.2em]">Bowling</p>
+                <div className="space-y-2">
+                  {(match.teams[match.teams.bowlingTeamId === 'A' ? 'teamA' : 'teamB']?.squad || []).map((player) => (
+                    <div key={player.id} className="p-3 rounded-[16px] bg-white/5 border border-white/10 flex justify-between items-center">
+                      <p className="text-[10px] font-black text-white">{player.name}</p>
+                      <p className="text-[10px] font-numbers text-[#39FF14]">{Math.floor((player.balls_bowled || 0) / 6)}.{(player.balls_bowled || 0) % 6} - {player.runs_conceded}/{player.wickets}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* SHARE MODAL */}
+      <AnimatePresence>
+        {showShareModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowShareModal(false)}
+            className="fixed inset-0 z-[4000] bg-black/95 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-[#0A0A0A] border border-white/10 rounded-[40px] overflow-hidden p-6 space-y-4"
+            >
+              <h3 className="font-heading text-lg uppercase italic text-[#00F0FF]">Share Score</h3>
+              <pre className="p-4 rounded-[16px] bg-white/5 border border-white/10 text-[10px] text-white/80 overflow-x-auto">
+                {shareText}
+              </pre>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handleShareAction('whatsapp')}
+                  className="py-2 rounded-[12px] bg-[#25D366] text-black font-black text-[11px] uppercase"
+                >
+                  WhatsApp
+                </button>
+                <button
+                  onClick={() => handleShareAction('copy')}
+                  className="py-2 rounded-[12px] bg-[#00F0FF] text-black font-black text-[11px] uppercase"
+                >
+                  {shareCopied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* QR SCANNER MODAL */}
+      <AnimatePresence>
+        {showQRScanner && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[4000] bg-black/95 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-md bg-[#0A0A0A] border border-white/10 rounded-[40px] overflow-hidden p-6 space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="font-heading text-lg uppercase italic text-[#00F0FF]">QR Scanner</h3>
+                <button onClick={closeQRScanner} className="p-2 text-white/40 hover:text-white">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="relative w-full aspect-square rounded-[20px] bg-black border-2 border-white/20 flex items-center justify-center overflow-hidden">
+                <video ref={qrVideoRef} className="absolute inset-0 w-full h-full object-cover" autoPlay playsInline />
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-48 h-48 border-2 border-[#00F0FF] rounded-[12px]" />
+                </div>
+                <p className="relative z-10 text-[12px] text-white/60 text-center">{qrScanStatus === 'SCANNING' ? 'Point at QR code' : qrScanError}</p>
+              </div>
+              <canvas ref={qrCanvasRef} className="hidden" />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* TRANSFER MODAL */}
+      <AnimatePresence>
+        {showTransferModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowTransferModal(false)}
+            className="fixed inset-0 z-[4000] bg-black/95 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-[#0A0A0A] border border-white/10 rounded-[40px] overflow-hidden"
+            >
+              <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                <h3 className="font-heading text-lg uppercase italic text-[#00F0FF]">Transfer Scoring</h3>
+                <button onClick={() => setShowTransferModal(false)} className="p-2 text-white/40">
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Tab Selector */}
+              <div className="flex p-2 bg-white/5 m-4 rounded-[16px]">
+                <button
+                  onClick={() => setTransferTab('HANDOFF')}
+                  className={`flex-1 py-2 rounded-[12px] text-[11px] font-black uppercase ${
+                    transferTab === 'HANDOFF' ? 'bg-[#00F0FF] text-black' : 'text-white/40'
+                  }`}
+                >
+                  Handoff
+                </button>
+                <button
+                  onClick={() => setTransferTab('BROADCAST')}
+                  className={`flex-1 py-2 rounded-[12px] text-[11px] font-black uppercase ${
+                    transferTab === 'BROADCAST' ? 'bg-[#00F0FF] text-black' : 'text-white/40'
+                  }`}
+                >
+                  Broadcast
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {handoffQRUrl && transferTab === 'HANDOFF' && (
+                  <div className="aspect-square rounded-[20px] bg-white p-2">
+                    <img src={handoffQRUrl} alt="Handoff QR" className="w-full h-full" />
+                  </div>
+                )}
+                {broadcastQRUrl && transferTab === 'BROADCAST' && (
+                  <div className="aspect-square rounded-[20px] bg-white p-2">
+                    <img src={broadcastQRUrl} alt="Broadcast QR" className="w-full h-full" />
+                  </div>
+                )}
+                <button
+                  onClick={copyTransferLink}
+                  className="w-full py-3 rounded-[20px] bg-[#00F0FF] text-black font-black text-[11px] uppercase"
+                >
+                  {transferLinkCopied ? 'Link Copied!' : 'Copy Link'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
