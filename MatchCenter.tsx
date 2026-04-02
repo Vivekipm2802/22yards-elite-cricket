@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import html2canvas from 'html2canvas';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area
@@ -147,6 +148,13 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [shareText, setShareText] = useState('');
   const [shareCopied, setShareCopied] = useState(false);
 
+  // Summary reveal animation state
+  const [summaryPhase, setSummaryPhase] = useState<'SKELETON' | 'COUNTING' | 'REVEAL' | 'READY'>('SKELETON');
+  const [countingRuns, setCountingRuns] = useState({ inn1: 0, inn2: 0 });
+  const [scorecardReady, setScorecardReady] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const scorecardRef = useRef<HTMLDivElement>(null);
+
   // QR Scanner
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [qrScanStatus, setQrScanStatus] = useState<'SCANNING' | 'SUCCESS' | 'ERROR'>('SCANNING');
@@ -219,6 +227,44 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       persistToGlobalVault(match, winnerTeam.name, winnerTeam.margin);
     }
   }, [status, winnerTeam]);
+
+  // Summary reveal animation sequence
+  useEffect(() => {
+    if (status !== 'SUMMARY') { setSummaryPhase('SKELETON'); return; }
+
+    // Phase 1: Skeleton shimmer (1.5s)
+    setSummaryPhase('SKELETON');
+    const t1 = setTimeout(() => setSummaryPhase('COUNTING'), 1500);
+
+    // Phase 2: Counting numbers (1.5s more = 3s total)
+    const t2 = setTimeout(() => setSummaryPhase('REVEAL'), 3000);
+
+    // Phase 3: Ready
+    const t3 = setTimeout(() => { setSummaryPhase('READY'); setScorecardReady(true); }, 3500);
+
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [status]);
+
+  // Counting animation for runs
+  useEffect(() => {
+    if (summaryPhase !== 'COUNTING') return;
+    const inn1Target = match.config.innings1Score || 0;
+    const inn2Target = match.liveScore.runs;
+    const duration = 1200;
+    const startTime = Date.now();
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+      setCountingRuns({
+        inn1: Math.round(inn1Target * eased),
+        inn2: Math.round(inn2Target * eased),
+      });
+      if (progress < 1) requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+  }, [summaryPhase, match.config.innings1Score, match.liveScore.runs]);
 
   const getTeamObj = (id: TeamID) => id === 'A' ? match.teams.teamA : match.teams.teamB;
   const getPlayer = (id: PlayerID | null) => {
@@ -815,6 +861,48 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   const innings1TeamId = match.currentInnings === 1 ? match.teams.battingTeamId : match.teams.bowlingTeamId;
   const innings2TeamId = match.currentInnings === 1 ? match.teams.bowlingTeamId : match.teams.battingTeamId;
+
+  const calculateMOTM = () => {
+    const allPlayers = [...(match.teams.teamA.squad || []), ...(match.teams.teamB.squad || [])];
+    return allPlayers.reduce((best, p) => {
+      const impact = (p.runs || 0) + (p.wickets || 0) * 25 + (p.catches || 0) * 10 + (p.stumpings || 0) * 10 + (p.run_outs || 0) * 10;
+      const bestImpact = (best.runs || 0) + (best.wickets || 0) * 25 + (best.catches || 0) * 10 + (best.stumpings || 0) * 10 + (best.run_outs || 0) * 10;
+      return impact > bestImpact ? p : best;
+    }, allPlayers[0] || {});
+  };
+
+  const captureScorecard = async () => {
+    if (!scorecardRef.current || isCapturing) return;
+    setIsCapturing(true);
+    try {
+      const canvas = await html2canvas(scorecardRef.current, {
+        backgroundColor: '#0A0A0A',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      const blob = await new Promise<Blob>((resolve) => canvas.toBlob(b => resolve(b!), 'image/png'));
+
+      if (navigator.share && navigator.canShare) {
+        const file = new File([blob], '22yards-scorecard.png', { type: 'image/png' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: '22 Yards Match Card' });
+          setIsCapturing(false);
+          return;
+        }
+      }
+      // Fallback: download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '22yards-scorecard.png';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Capture failed:', e);
+    }
+    setIsCapturing(false);
+  };
 
   // Squad Editor Modal Helper Functions
   const handleEnlistNewPlayer = () => {
@@ -3064,136 +3152,399 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
         {/* SUMMARY SCREEN */}
         {status === 'SUMMARY' && (
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-6 pb-20">
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="p-8 rounded-[40px] bg-gradient-to-br from-[#00F0FF]/10 to-[#FFD600]/10 border border-white/10 space-y-4 text-center"
-              >
-                <h2 className="font-heading text-4xl uppercase italic text-[#00F0FF]">Match Complete</h2>
-                {winnerTeam ? (
-                  <>
-                    <h3 className={`font-heading text-5xl uppercase italic ${winnerTeam.id ? 'text-[#39FF14]' : 'text-[#FFD600]'}`}>{winnerTeam.name}</h3>
-                    <p className="text-[11px] font-black text-white/40 uppercase tracking-[0.3em]">{winnerTeam.margin}</p>
-                  </>
-                ) : (
-                  <p className="text-[13px] text-white/40 font-black uppercase">Calculating result...</p>
-                )}
-              </motion.div>
+          <>
+            <style>{`
+              @keyframes shimmer {
+                0% { background-position: -400px 0; }
+                100% { background-position: 400px 0; }
+              }
+              .skeleton-shimmer {
+                background: linear-gradient(90deg, #111 25%, #1a1a1a 50%, #111 75%);
+                background-size: 800px 100%;
+                animation: shimmer 1.5s infinite linear;
+              }
+              @keyframes glint {
+                0% { left: -100%; }
+                50% { left: 100%; }
+                100% { left: 100%; }
+              }
+              .golden-glint {
+                position: relative;
+                overflow: hidden;
+              }
+              .golden-glint::after {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: -100%;
+                width: 60%;
+                height: 100%;
+                background: linear-gradient(90deg, transparent, rgba(255,214,0,0.3), transparent);
+                animation: glint 2s ease-in-out 0.5s forwards;
+              }
+            `}</style>
 
-              {/* TABS */}
-              <div className="flex gap-2 p-1 bg-white/5 rounded-[20px]">
-                {['OVERVIEW', 'ANALYTICS', 'SCORECARD'].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setSummaryTab(tab as any)}
-                    className={`flex-1 py-3 rounded-[16px] font-black text-[10px] uppercase tracking-[0.2em] transition-all ${
-                      summaryTab === tab ? 'bg-[#00F0FF] text-black shadow-[0_0_20px_rgba(0,240,255,0.3)]' : 'text-white/40'
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
+            {/* HIDDEN SCORECARD CAPTURE DIV */}
+            <div
+              ref={scorecardRef}
+              style={{
+                position: 'absolute',
+                left: '-9999px',
+                top: 0,
+                width: '400px',
+                aspectRatio: '9 / 16',
+                backgroundColor: '#0A0A0A',
+                color: 'white',
+                fontFamily: 'system-ui, monospace',
+                padding: '20px',
+                boxSizing: 'border-box',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}
+            >
+              {/* Top branding */}
+              <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#00F0FF', marginBottom: '10px' }}>
+                22 YARDS
               </div>
 
-              {/* TAB CONTENT */}
-              {summaryTab === 'OVERVIEW' && (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    {['A', 'B'].map((id) => (
-                      <div key={id} className="p-6 rounded-[32px] bg-white/5 border border-white/10 text-center space-y-3">
-                        <p className="text-[10px] font-black text-white/40 uppercase">{getTeamObj(id).name}</p>
-                        <p className="font-numbers text-3xl font-black text-white">
-                          {getTeamObj(id).squad?.reduce((sum, p) => sum + (p.runs || 0), 0) || 0}
-                        </p>
-                        <p className="text-[9px] text-white/30">
-                          {getTeamObj(id).squad?.filter(p => !p.isOut).length || 0} batting
-                        </p>
-                      </div>
+              {/* Match result */}
+              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#FFD600', marginBottom: '8px' }}>
+                  ★ MATCH RESULT ★
+                </div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#39FF14', marginBottom: '6px' }}>
+                  {winnerTeam?.name || 'Match Complete'} {winnerTeam?.margin ? `(${winnerTeam.margin})` : ''}
+                </div>
+              </div>
+
+              {/* Innings 1 */}
+              <div style={{ marginBottom: '15px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#00F0FF', borderBottom: '1px solid #333', paddingBottom: '6px', marginBottom: '8px' }}>
+                  ─── INNINGS 1 ─ {getTeamObj(innings1TeamId).name} ───
+                </div>
+                <div style={{ fontSize: '10px', marginBottom: '6px' }}>
+                  Score: {match.config.innings1Score || 0}/{match.config.innings1Wickets || 0} ({Math.floor((match.config.innings1Balls || 0) / 6)}.{(match.config.innings1Balls || 0) % 6} ov)
+                </div>
+                <table style={{ width: '100%', fontSize: '8px', borderCollapse: 'collapse', marginBottom: '8px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #333' }}>
+                      <th style={{ textAlign: 'left', paddingBottom: '4px' }}>Batsman</th>
+                      <th style={{ textAlign: 'right', paddingBottom: '4px' }}>R</th>
+                      <th style={{ textAlign: 'right', paddingBottom: '4px' }}>B</th>
+                      <th style={{ textAlign: 'right', paddingBottom: '4px' }}>4s</th>
+                      <th style={{ textAlign: 'right', paddingBottom: '4px' }}>6s</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(getTeamObj(innings1TeamId).squad || []).slice(0, 4).map((p) => (
+                      <tr key={p.id} style={{ borderBottom: '1px solid #1a1a1a' }}>
+                        <td style={{ paddingTop: '2px', paddingBottom: '2px' }}>{p.name.slice(0, 10)}</td>
+                        <td style={{ textAlign: 'right' }}>{p.runs || 0}</td>
+                        <td style={{ textAlign: 'right' }}>{p.balls || 0}</td>
+                        <td style={{ textAlign: 'right' }}>{p.fours || 0}</td>
+                        <td style={{ textAlign: 'right', color: '#FF6D00' }}>{p.sixes || 0}</td>
+                      </tr>
                     ))}
-                  </div>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Innings 2 */}
+              <div style={{ marginBottom: '15px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#00F0FF', borderBottom: '1px solid #333', paddingBottom: '6px', marginBottom: '8px' }}>
+                  ─── INNINGS 2 ─ {getTeamObj(innings2TeamId).name} ───
                 </div>
-              )}
-
-              {summaryTab === 'ANALYTICS' && (
-                <div className="space-y-4 text-[10px] text-white/40 text-center py-12">
-                  <p>Detailed analytics coming soon</p>
+                <div style={{ fontSize: '10px', marginBottom: '6px' }}>
+                  Score: {match.liveScore.runs}/{match.liveScore.wickets} ({Math.floor(match.liveScore.balls / 6)}.{match.liveScore.balls % 6} ov)
                 </div>
-              )}
+                <table style={{ width: '100%', fontSize: '8px', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #333' }}>
+                      <th style={{ textAlign: 'left', paddingBottom: '4px' }}>Batsman</th>
+                      <th style={{ textAlign: 'right', paddingBottom: '4px' }}>R</th>
+                      <th style={{ textAlign: 'right', paddingBottom: '4px' }}>B</th>
+                      <th style={{ textAlign: 'right', paddingBottom: '4px' }}>4s</th>
+                      <th style={{ textAlign: 'right', paddingBottom: '4px' }}>6s</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(getTeamObj(innings2TeamId).squad || []).slice(0, 4).map((p) => (
+                      <tr key={p.id} style={{ borderBottom: '1px solid #1a1a1a' }}>
+                        <td style={{ paddingTop: '2px', paddingBottom: '2px' }}>{p.name.slice(0, 10)}</td>
+                        <td style={{ textAlign: 'right' }}>{p.runs || 0}</td>
+                        <td style={{ textAlign: 'right' }}>{p.balls || 0}</td>
+                        <td style={{ textAlign: 'right' }}>{p.fours || 0}</td>
+                        <td style={{ textAlign: 'right', color: '#FF6D00' }}>{p.sixes || 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-              {summaryTab === 'SCORECARD' && (
-                <div className="space-y-6">
-                  {['A', 'B'].map((id) => (
-                    <div key={id} className="space-y-3">
-                      <p className="text-[10px] font-black text-[#00F0FF] uppercase">{getTeamObj(id).name}</p>
-                      <div className="space-y-2">
-                        {(getTeamObj(id).squad || []).map((player) => (
-                          <div key={player.id} className="p-3 rounded-[16px] bg-white/5 border border-white/10 flex justify-between items-center">
-                            <p className="text-[9px] font-black text-white">{player.name}</p>
-                            <p className="text-[9px] font-numbers text-[#00F0FF]">{player.runs || 0}({player.balls || 0})</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* Highlights */}
+              <div style={{ fontSize: '10px', color: '#FFD600', textAlign: 'center', paddingTop: '10px', borderTop: '1px solid #333' }}>
+                ★ HIGHLIGHTS ★
+              </div>
 
-              {/* Share + New Match buttons */}
-              <div className="space-y-3 pt-4">
-                {/* Share result on WhatsApp with follow link */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const followUrl = `${window.location.origin}${window.location.pathname}?watch=${match.matchId}`;
-                    const result = winnerTeam ? `${winnerTeam.name} ${winnerTeam.margin}` : 'Match Complete';
-                    const text = `🏏 Match Result\n\n${match.teams.teamA.name} vs ${match.teams.teamB.name}\n\n${result}\n\n📍 ${match.config.ground || match.config.city}\n\n📺 Full Scorecard:\n${followUrl}`;
-                    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
-                  }}
-                  className="w-full py-4 rounded-[20px] bg-[#25D366] text-black font-black uppercase text-[12px] tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all"
-                >
-                  <Share2 size={16} />
-                  Share Result
-                </button>
-
-                {/* New Match */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const freshState = createInitialState();
-                    localStorage.setItem('22YARDS_ACTIVE_MATCH', JSON.stringify(freshState));
-                    setMatch(freshState);
-                    setStatus('CONFIG');
-                    setWinnerTeam(null);
-                    setSelectionTarget(null);
-                    setConfigStep(1);
-                    setVsRevealed(false);
-                    setOverlayAnim(null);
-                    setSummaryTab('OVERVIEW');
-                  }}
-                  className="w-full py-4 rounded-[20px] bg-[#00F0FF] text-black font-black uppercase text-[12px] tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all"
-                >
-                  <Swords size={16} />
-                  New Match
-                </button>
-
-                {/* Back to Dugout */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Mark as completed in localStorage so next mount resets
-                    localStorage.setItem('22YARDS_ACTIVE_MATCH', JSON.stringify({ ...match, status: 'COMPLETED' }));
-                    onBack();
-                  }}
-                  className="w-full py-3 rounded-[20px] bg-white/5 border border-white/10 text-white/50 font-black uppercase text-[11px] tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all"
-                >
-                  <ChevronLeft size={16} />
-                  Back to Dugout
-                </button>
+              {/* Footer */}
+              <div style={{ fontSize: '8px', color: '#666', textAlign: 'center', borderTop: '1px solid #333', paddingTop: '8px', marginTop: '10px' }}>
+                22 YARDS • Scored on 22yards
               </div>
             </div>
-          </div>
+
+            {/* VISIBLE SUMMARY SCREEN */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Notification Banner */}
+              {scorecardReady && (
+                <motion.div
+                  initial={{ y: -60, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className="bg-[#00F0FF]/10 border-b border-[#00F0FF]/20 px-6 py-3 text-center text-[12px] font-black text-[#00F0FF] uppercase tracking-[0.2em]"
+                >
+                  Your match card is ready — tap to share
+                </motion.div>
+              )}
+
+              <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-6 pb-20">
+                {/* Phase 1: Skeleton Shimmer */}
+                {summaryPhase === 'SKELETON' && (
+                  <div className="space-y-4">
+                    <div className="skeleton-shimmer h-32 rounded-[32px]" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="skeleton-shimmer h-20 rounded-[16px]" />
+                      <div className="skeleton-shimmer h-20 rounded-[16px]" />
+                    </div>
+                    <div className="skeleton-shimmer h-40 rounded-[20px]" />
+                  </div>
+                )}
+
+                {/* Phase 2-3: Result + Scorecard */}
+                {summaryPhase !== 'SKELETON' && (
+                  <>
+                    {/* Result Banner */}
+                    <motion.div
+                      initial={summaryPhase === 'COUNTING' ? { scale: 0.9, opacity: 0 } : { scale: 1, opacity: 1 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ delay: summaryPhase === 'COUNTING' ? 0.2 : 0 }}
+                      className="p-8 rounded-[40px] bg-gradient-to-br from-[#00F0FF]/10 to-[#FFD600]/10 border border-white/10 space-y-4 text-center"
+                    >
+                      <h2 className="font-heading text-4xl uppercase italic text-[#00F0FF]">Match Complete</h2>
+                      {winnerTeam ? (
+                        <>
+                          <h3 className={`font-heading text-5xl uppercase italic ${winnerTeam.id ? 'text-[#39FF14]' : 'text-[#FFD600]'}`}>
+                            {winnerTeam.name}
+                          </h3>
+                          <p className="text-[11px] font-black text-white/40 uppercase tracking-[0.3em]">{winnerTeam.margin}</p>
+                        </>
+                      ) : (
+                        <p className="text-[13px] text-white/40 font-black uppercase">Calculating result...</p>
+                      )}
+                    </motion.div>
+
+                    {/* Tabs */}
+                    <div className="flex gap-2 p-1 bg-white/5 rounded-[20px]">
+                      {['OVERVIEW', 'ANALYTICS', 'SCORECARD'].map((tab) => (
+                        <button
+                          key={tab}
+                          onClick={() => setSummaryTab(tab as any)}
+                          className={`flex-1 py-3 rounded-[16px] font-black text-[10px] uppercase tracking-[0.2em] transition-all ${
+                            summaryTab === tab ? 'bg-[#00F0FF] text-black shadow-[0_0_20px_rgba(0,240,255,0.3)]' : 'text-white/40'
+                          }`}
+                        >
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Tab Content */}
+                    {summaryTab === 'OVERVIEW' && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="space-y-6"
+                      >
+                        {/* Counting Numbers */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="p-6 rounded-[32px] bg-white/5 border border-white/10 text-center space-y-3">
+                            <p className="text-[10px] font-black text-white/40 uppercase">{getTeamObj(innings1TeamId).name}</p>
+                            <p className="font-numbers text-4xl font-black text-[#00F0FF]">{countingRuns.inn1}</p>
+                            <p className="text-[8px] text-white/30">
+                              {match.config.innings1Wickets || 0} wickets
+                            </p>
+                          </div>
+                          <div className="p-6 rounded-[32px] bg-white/5 border border-white/10 text-center space-y-3">
+                            <p className="text-[10px] font-black text-white/40 uppercase">{getTeamObj(innings2TeamId).name}</p>
+                            <p className="font-numbers text-4xl font-black text-[#00F0FF]">{countingRuns.inn2}</p>
+                            <p className="text-[8px] text-white/30">
+                              {match.liveScore.wickets || 0} wickets
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Highlights */}
+                        <div className="p-6 rounded-[32px] bg-white/5 border border-white/10 space-y-4">
+                          <h3 className="text-[12px] font-black text-[#FFD600] uppercase text-center">Highlights</h3>
+                          <div className="space-y-3 text-[10px]">
+                            {(() => {
+                              const topScorer = [...(match.teams.teamA.squad || []), ...(match.teams.teamB.squad || [])].reduce((best, p) => (p.runs || 0) > (best.runs || 0) ? p : best, {});
+                              const bestBowler = [...(match.teams.teamA.squad || []), ...(match.teams.teamB.squad || [])].reduce((best, p) => (p.wickets || 0) > (best.wickets || 0) ? p : best, {});
+                              const motm = calculateMOTM();
+                              return (
+                                <>
+                                  {topScorer?.name && (
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-white/40">Top Scorer:</span>
+                                      <span className="text-[#00F0FF] font-black">{topScorer.name} {topScorer.runs}({topScorer.balls})</span>
+                                    </div>
+                                  )}
+                                  {bestBowler?.name && (
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-white/40">Best Bowler:</span>
+                                      <span className="text-[#FF6D00] font-black">{bestBowler.name} {bestBowler.wickets}-{bestBowler.runs_conceded}</span>
+                                    </div>
+                                  )}
+                                  {motm?.name && (
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-white/40">Man of Match:</span>
+                                      <span className="text-[#FFD600] font-black">{motm.name}</span>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {summaryTab === 'ANALYTICS' && (
+                      <div className="space-y-4 text-[10px] text-white/40 text-center py-12">
+                        <p>Detailed analytics coming soon</p>
+                      </div>
+                    )}
+
+                    {summaryTab === 'SCORECARD' && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="space-y-6"
+                      >
+                        {/* Innings 1 */}
+                        <div className="space-y-3">
+                          <p className="text-[10px] font-black text-[#00F0FF] uppercase">{getTeamObj(innings1TeamId).name}</p>
+                          <div className="space-y-2">
+                            {(getTeamObj(innings1TeamId).squad || []).map((player) => (
+                              <div key={player.id} className="p-3 rounded-[16px] bg-white/5 border border-white/10">
+                                <div className="flex justify-between items-start mb-1">
+                                  <p className="text-[9px] font-black text-white">{player.name}</p>
+                                  <p className="text-[9px] font-numbers text-[#00F0FF]">{player.runs || 0}({player.balls || 0})</p>
+                                </div>
+                                <p className="text-[8px] text-white/40">
+                                  {player.isOut ? getWicketDetail(player, 1) : 'not out'}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Innings 2 */}
+                        <div className="space-y-3">
+                          <p className="text-[10px] font-black text-[#00F0FF] uppercase">{getTeamObj(innings2TeamId).name}</p>
+                          <div className="space-y-2">
+                            {(getTeamObj(innings2TeamId).squad || []).map((player) => (
+                              <div key={player.id} className="p-3 rounded-[16px] bg-white/5 border border-white/10">
+                                <div className="flex justify-between items-start mb-1">
+                                  <p className="text-[9px] font-black text-white">{player.name}</p>
+                                  <p className="text-[9px] font-numbers text-[#00F0FF]">{player.runs || 0}({player.balls || 0})</p>
+                                </div>
+                                <p className="text-[8px] text-white/40">
+                                  {player.isOut ? getWicketDetail(player, 2) : 'not out'}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Share buttons */}
+                    <div className="space-y-3 pt-4">
+                      <button
+                        type="button"
+                        onClick={captureScorecard}
+                        disabled={isCapturing}
+                        className="w-full py-4 rounded-[20px] bg-[#39FF14] text-black font-black uppercase text-[12px] tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50"
+                      >
+                        <Share2 size={16} />
+                        {isCapturing ? 'Capturing...' : 'Share Full Card'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const followUrl = `${window.location.origin}${window.location.pathname}?watch=${match.matchId}`;
+                          const result = winnerTeam ? `${winnerTeam.name} ${winnerTeam.margin}` : 'Match Complete';
+                          const text = `Match Result\n\n${match.teams.teamA.name} vs ${match.teams.teamB.name}\n\n${result}\n\n📍 ${match.config.ground || match.config.city}\n\n📺 Full Scorecard:\n${followUrl}`;
+                          window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+                        }}
+                        className="w-full py-4 rounded-[20px] bg-[#25D366] text-black font-black uppercase text-[12px] tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all"
+                      >
+                        <Share2 size={16} />
+                        Share Result
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const followUrl = `${window.location.origin}${window.location.pathname}?watch=${match.matchId}`;
+                          navigator.clipboard.writeText(followUrl);
+                          setShareCopied(true);
+                          setTimeout(() => setShareCopied(false), 2000);
+                        }}
+                        className="w-full py-3 rounded-[20px] bg-[#4DB6AC] text-black font-black uppercase text-[11px] tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all"
+                      >
+                        <Check size={14} />
+                        {shareCopied ? 'Copied!' : 'Copy Scorecard Link'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const freshState = createInitialState();
+                          localStorage.setItem('22YARDS_ACTIVE_MATCH', JSON.stringify(freshState));
+                          setMatch(freshState);
+                          setStatus('CONFIG');
+                          setWinnerTeam(null);
+                          setSelectionTarget(null);
+                          setConfigStep(1);
+                          setVsRevealed(false);
+                          setOverlayAnim(null);
+                          setSummaryTab('OVERVIEW');
+                        }}
+                        className="w-full py-4 rounded-[20px] bg-[#00F0FF] text-black font-black uppercase text-[12px] tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all"
+                      >
+                        <Swords size={16} />
+                        New Match
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          localStorage.setItem('22YARDS_ACTIVE_MATCH', JSON.stringify({ ...match, status: 'COMPLETED' }));
+                          onBack();
+                        }}
+                        className="w-full py-3 rounded-[20px] bg-white/5 border border-white/10 text-white/50 font-black uppercase text-[11px] tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all"
+                      >
+                        <ChevronLeft size={16} />
+                        Back to Dugout
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </>
         )}
       </div>
 
