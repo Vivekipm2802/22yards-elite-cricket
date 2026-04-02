@@ -56,6 +56,11 @@ const App: React.FC = () => {
   const [transferData] = useState<string | null>(() => {
     try { return new URLSearchParams(window.location.search).get('transfer'); } catch { return null; }
   });
+  /* —— URL params: ?importMatch=BASE64 for cross-device match record sharing —— */
+  const [importMatchData] = useState<string | null>(() => {
+    try { return new URLSearchParams(window.location.search).get('importMatch'); } catch { return null; }
+  });
+  const [importMatchDone, setImportMatchDone] = useState(false);
   /* —— URL params: ?spectate=CODE for spectator mode —— */
   const [spectateCode] = useState<string | null>(() => {
     try { return new URLSearchParams(window.location.search).get('spectate'); } catch { return null; }
@@ -177,6 +182,50 @@ const App: React.FC = () => {
     } catch {}
   };
 
+  /* —— Import Match Record from shared link —— */
+  useEffect(() => {
+    if (!importMatchData || !userData || importMatchDone) return;
+    try {
+      const json = decodeURIComponent(escape(atob(importMatchData)));
+      const payload = JSON.parse(json);
+      if (payload && payload.records && Array.isArray(payload.records)) {
+        const globalVault = JSON.parse(localStorage.getItem('22YARDS_GLOBAL_VAULT') || '{}');
+        let imported = 0;
+
+        payload.records.forEach((entry: any) => {
+          const phone = entry.phone;
+          if (!phone || !entry.record) return;
+
+          if (!globalVault[phone]) {
+            globalVault[phone] = { history: [], teams: [], name: entry.name || '' };
+          }
+          // Deduplicate
+          const alreadyExists = globalVault[phone].history.some((h: any) => h.id === entry.record.id);
+          if (!alreadyExists) {
+            globalVault[phone].history.push(entry.record);
+            imported++;
+          }
+        });
+
+        if (imported > 0) {
+          localStorage.setItem('22YARDS_GLOBAL_VAULT', JSON.stringify(globalVault));
+        }
+
+        setImportMatchDone(true);
+        // Clean URL
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('importMatch');
+          window.history.replaceState({}, '', url.toString());
+        } catch {}
+        // Navigate to Archive to show imported match
+        setTimeout(() => setActivePage('HISTORY'), 500);
+      }
+    } catch (e) {
+      console.error('Failed to import match record:', e);
+    }
+  }, [importMatchData, userData, importMatchDone]);
+
   if (!isReady) {
     return <SplashScreen onComplete={() => setIsReady(true)} />;
   }
@@ -193,7 +242,7 @@ const App: React.FC = () => {
   const renderPage = () => {
     switch (activePage) {
       case 'DUGOUT': return <Dugout onNavigate={setActivePage} onUpgrade={() => setShowUpgradeModal(true)} />;
-      case 'MATCH_CENTER': return <MatchCenter onBack={() => setActivePage('DUGOUT')} />;
+      case 'MATCH_CENTER': return <MatchCenter onBack={() => setActivePage('DUGOUT')} onNavigate={(page) => setActivePage(page as Page)} />;
       case 'PERFORMANCE': return <Performance userAvatar={userData.avatar} />;
       case 'ARENA': return <Arena />;
       case 'HISTORY': return <Archive />;

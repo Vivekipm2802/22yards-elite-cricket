@@ -74,7 +74,7 @@ const KeypadButton = ({ children, onClick, color = 'white', border = 'transparen
   </motion.button>
 );
 
-const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+const MatchCenter: React.FC<{ onBack: () => void; onNavigate?: (page: string) => void }> = ({ onBack, onNavigate }) => {
   const { userData } = useAuth();
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [activeLogoTeamId, setActiveLogoTeamId] = useState<TeamID | null>(null);
@@ -543,18 +543,10 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   };
 
   const persistToGlobalVault = (finalMatchState: MatchState, winnerName = '', winnerMargin = '') => {
-    if (!userData?.phone) return;
-
-    const activePhone = userData.phone;
     const globalVault = JSON.parse(localStorage.getItem('22YARDS_GLOBAL_VAULT') || '{}');
-    if (!globalVault[activePhone]) {
-      globalVault[activePhone] = { history: [], teams: [], name: userData.name };
-    }
 
     const teamA = finalMatchState.teams.teamA;
     const teamB = finalMatchState.teams.teamB;
-    const isUserInTeamA = (teamA.squad || []).some(p => p.phone === activePhone);
-    const isUserInTeamB = (teamB.squad || []).some(p => p.phone === activePhone);
 
     const buildMatchRecord = (playerObj: any, playerTeamId: 'A' | 'B') => {
       const oppTeamObj = playerTeamId === 'A' ? teamB : teamA;
@@ -598,9 +590,6 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           const inn1BowlerKey = finalMatchState.teams.battingTeamId === 'A' ? 'teamA' : 'teamB';
           const inn1BattingTeam = finalMatchState.teams[inn1BatterKey];
           const inn1BowlingTeam = finalMatchState.teams[inn1BowlerKey];
-          const hist = finalMatchState.history || [];
-          const allSquad = [...(inn1BattingTeam.squad || []), ...(inn1BowlingTeam.squad || [])];
-          const findP = (id: string) => allSquad.find(p => p.id === id);
 
           return {
             innings1: {
@@ -618,46 +607,54 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       };
     };
 
-    if (isUserInTeamA) {
-      const userInA = (teamA.squad || []).find(p => p.phone === activePhone);
-      if (userInA) {
-        globalVault[activePhone].history.push(buildMatchRecord(userInA, 'A'));
-      }
-    }
-    if (isUserInTeamB) {
-      const userInB = (teamB.squad || []).find(p => p.phone === activePhone);
-      if (userInB) {
-        globalVault[activePhone].history.push(buildMatchRecord(userInB, 'B'));
-      }
-    }
+    // Helper: save a match record for a single player by phone
+    const saveForPlayer = (playerObj: any, teamId: 'A' | 'B', teamObj: any) => {
+      const phone = playerObj.phone;
+      if (!phone) return; // skip players without phone numbers
 
-    const upsertTeam = (team: any, teamType: 'A' | 'B') => {
-      const existingTeamIdx = globalVault[activePhone].teams.findIndex(
-        t => t.name.toUpperCase() === team.name.toUpperCase()
-      );
-      if (existingTeamIdx >= 0) {
-        globalVault[activePhone].teams[existingTeamIdx] = {
-          id: globalVault[activePhone].teams[existingTeamIdx].id || `T-${Date.now()}`,
-          name: team.name,
-          city: team.city || '',
-          players: team.squad || [],
-          dateLastPlayed: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
-        };
-      } else {
-        globalVault[activePhone].teams.push({
-          id: `T-${Date.now()}`,
-          name: team.name,
-          city: team.city || '',
-          players: team.squad || [],
-          dateLastPlayed: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
-        });
+      if (!globalVault[phone]) {
+        globalVault[phone] = { history: [], teams: [], name: playerObj.name || '' };
       }
+
+      // Deduplicate — don't add same match twice
+      const alreadySaved = globalVault[phone].history.some((h: any) => h.id === finalMatchState.matchId);
+      if (!alreadySaved) {
+        globalVault[phone].history.push(buildMatchRecord(playerObj, teamId));
+      }
+
+      // Upsert team entry for this player
+      const existingTeamIdx = globalVault[phone].teams.findIndex(
+        (t: any) => t.name.toUpperCase() === teamObj.name.toUpperCase()
+      );
+      const teamEntry = {
+        id: existingTeamIdx >= 0 ? (globalVault[phone].teams[existingTeamIdx].id || `T-${Date.now()}`) : `T-${Date.now()}`,
+        name: teamObj.name,
+        city: teamObj.city || '',
+        players: teamObj.squad || [],
+        dateLastPlayed: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+      };
+      if (existingTeamIdx >= 0) {
+        globalVault[phone].teams[existingTeamIdx] = teamEntry;
+      } else {
+        globalVault[phone].teams.push(teamEntry);
+      }
+
+      // Cloud sync: push to Supabase if connected (fire-and-forget)
+      try {
+        syncMatchToSupabase(phone, buildMatchRecord(playerObj, teamId), globalVault[phone].history).catch(() => {});
+      } catch (_) {}
     };
 
-    if (isUserInTeamA) upsertTeam(teamA, 'A');
-    if (isUserInTeamB) upsertTeam(teamB, 'B');
+    // Save for EVERY player in both teams
+    (teamA.squad || []).forEach((p: any) => saveForPlayer(p, 'A', teamA));
+    (teamB.squad || []).forEach((p: any) => saveForPlayer(p, 'B', teamB));
 
     localStorage.setItem('22YARDS_GLOBAL_VAULT', JSON.stringify(globalVault));
+
+    // Also save match record to Supabase matches table
+    try {
+      saveMatchRecord(finalMatchState, winnerName, winnerMargin).catch(() => {});
+    } catch (_) {}
   };
 
   // Strip match-specific stats from players when importing from vault
@@ -1534,7 +1531,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
   };
 
-  const isAddPlayerDisabled = !newName.trim();
+  const isAddPlayerDisabled = !newName.trim() || (phoneQuery.length > 0 && phoneQuery.length !== 10);
 
   return (
     <div className="h-full w-full bg-[#050505] text-white flex flex-col overflow-hidden relative font-sans max-h-[100dvh]">
@@ -4486,6 +4483,67 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                           Dugout
                         </button>
                       </div>
+
+                      {/* Quick-nav to Performance Hub & Personal Archive */}
+                      {onNavigate && (
+                        <div className="flex gap-3 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              localStorage.setItem('22YARDS_ACTIVE_MATCH', JSON.stringify({ ...match, status: 'COMPLETED' }));
+                              onNavigate('PERFORMANCE');
+                            }}
+                            className="flex-1 py-3 rounded-[16px] bg-[#39FF14]/10 border border-[#39FF14]/30 text-[#39FF14] font-black uppercase text-[10px] tracking-[0.15em] flex items-center justify-center gap-2 active:scale-95 transition-all"
+                          >
+                            <BarChart2 size={14} />
+                            Performance Hub
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              localStorage.setItem('22YARDS_ACTIVE_MATCH', JSON.stringify({ ...match, status: 'COMPLETED' }));
+                              onNavigate('HISTORY');
+                            }}
+                            className="flex-1 py-3 rounded-[16px] bg-[#FFD600]/10 border border-[#FFD600]/30 text-[#FFD600] font-black uppercase text-[10px] tracking-[0.15em] flex items-center justify-center gap-2 active:scale-95 transition-all"
+                          >
+                            <History size={14} />
+                            Personal Archive
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Share Match Record Link (offline cross-device) */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          try {
+                            const vault = JSON.parse(localStorage.getItem('22YARDS_GLOBAL_VAULT') || '{}');
+                            // Build a compact shareable payload with all player records from this match
+                            const matchRecords: any[] = [];
+                            Object.keys(vault).forEach(phone => {
+                              const entry = vault[phone];
+                              const matchRec = (entry.history || []).find((h: any) => h.id === match.matchId);
+                              if (matchRec) matchRecords.push({ phone, name: entry.name, record: matchRec });
+                            });
+                            if (matchRecords.length === 0) return;
+                            const payload = { matchId: match.matchId, records: matchRecords, ts: Date.now() };
+                            const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+                            const url = `${window.location.origin}${window.location.pathname}?importMatch=${b64}`;
+                            if (navigator.share) {
+                              navigator.share({ title: '22 Yards Match Record', text: 'Import this match to your 22 Yards app', url });
+                            } else {
+                              navigator.clipboard.writeText(url);
+                              setTransferLinkCopied(true);
+                              setTimeout(() => setTransferLinkCopied(false), 2000);
+                            }
+                          } catch (_) {}
+                        }}
+                        className="w-full py-3 rounded-[16px] bg-[#BC13FE]/10 border border-[#BC13FE]/30 text-[#BC13FE] font-black uppercase text-[10px] tracking-[0.15em] flex items-center justify-center gap-2 active:scale-95 transition-all mt-2"
+                      >
+                        <Share2 size={14} />
+                        {transferLinkCopied ? 'Link Copied!' : 'Share Match Record to Players'}
+                      </button>
                     </div>
 
                     {/* Share Bottom Sheet */}
@@ -5035,9 +5093,9 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               {/* Add Button */}
               <button
                 onClick={handleAddPlayerMidMatch}
-                disabled={!addPlayerName.trim()}
+                disabled={!addPlayerName.trim() || (addPlayerPhone.length > 0 && addPlayerPhone.length !== 10)}
                 className={`w-full py-4 rounded-[20px] font-black text-[13px] uppercase tracking-wider transition-all ${
-                  addPlayerName.trim()
+                  addPlayerName.trim() && !(addPlayerPhone.length > 0 && addPlayerPhone.length !== 10)
                     ? 'bg-[#00F0FF] text-black active:scale-[0.98]'
                     : 'bg-white/5 text-white/20 cursor-not-allowed'
                 }`}

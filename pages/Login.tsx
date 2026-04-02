@@ -26,6 +26,10 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       alert("Please complete the authorization protocol.");
       return;
     }
+    if (phone.length !== 10) {
+      alert("Phone number must be exactly 10 digits.");
+      return;
+    }
 
     setLoading(true);
     await new Promise(resolve => setTimeout(resolve, 1200));
@@ -234,10 +238,10 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
         {/* Action Button - Locked at bottom of card */}
         <div className="pt-6 mt-auto shrink-0">
-          <MotionButton 
-            onClick={handleSubmit} 
-            disabled={loading} 
-            className="w-full bg-[#00F0FF] text-black py-5 sm:py-7 !rounded-2xl sm:!rounded-3xl font-black tracking-[0.3em] sm:tracking-[0.4em] flex items-center justify-center space-x-4 text-[10px] sm:text-xs uppercase shadow-[0_20px_50px_rgba(0,240,255,0.4)] border-0 active:scale-95"
+          <MotionButton
+            onClick={handleSubmit}
+            disabled={loading || !name || !phone || phone.length !== 10 || !role || !city}
+            className="w-full bg-[#00F0FF] text-black py-5 sm:py-7 !rounded-2xl sm:!rounded-3xl font-black tracking-[0.3em] sm:tracking-[0.4em] flex items-center justify-center space-x-4 text-[10px] sm:text-xs uppercase shadow-[0_20px_50px_rgba(0,240,255,0.4)] border-0 active:scale-95 disabled:bg-white/10 disabled:text-white/30 disabled:shadow-none disabled:cursor-not-allowed"
           >
             {loading ? <RefreshCw className="animate-spin w-5 h-5" /> : <span>AUTHORIZE ACCESS</span>}
           </MotionButton>
