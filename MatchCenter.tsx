@@ -212,7 +212,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   };
 
   const checkTeamConflicts = () => {
-    if (!userData?.phone) { setStatus('TOSS_FLIP'); return; }
+    if (!userData?.phone) { setMatch(m => ({ ...m, toss: { winnerId: null, decision: null } })); setStatus('TOSS_FLIP'); return; }
 
     const globalVault = JSON.parse(localStorage.getItem('22YARDS_GLOBAL_VAULT') || '{}');
     const userVault = globalVault[userData.phone] || { teams: [] };
@@ -237,6 +237,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       }
     }
 
+    setMatch(m => ({ ...m, toss: { winnerId: null, decision: null } }));
     setStatus('TOSS_FLIP');
   };
 
@@ -260,6 +261,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     });
 
     setSquadConflict(null);
+    setMatch(m => ({ ...m, toss: { winnerId: null, decision: null } }));
     setStatus('TOSS_FLIP');
   };
 
@@ -1779,7 +1781,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           )}
         </AnimatePresence>
 
-        {/* TOSS SCREEN - Simple 2-step: Who Won + Bat/Bowl */}
+        {/* TOSS SCREEN - 2-step: Who Won → Bat/Bowl → straight to Openers */}
         {status === 'TOSS_FLIP' && (
           <div className="flex-1 flex flex-col overflow-hidden bg-[#050505]">
             <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-8 pb-32 flex flex-col items-center justify-center">
@@ -1791,7 +1793,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
-                    className="space-y-8 w-full max-w-md text-center"
+                    className="space-y-6 w-full max-w-md text-center"
                   >
                     <div className="space-y-3">
                       <Coins size={40} className="text-[#FFD600] mx-auto" />
@@ -1823,14 +1825,14 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   </motion.div>
                 )}
 
-                {/* STEP 2: Bat or Bowl? */}
-                {match.toss.winnerId && !match.toss.decision && (
+                {/* STEP 2: Bat or Bowl? → directly goes to Openers */}
+                {match.toss.winnerId && (
                   <motion.div
                     key="toss-decision"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
-                    className="space-y-8 w-full max-w-md text-center"
+                    className="space-y-6 w-full max-w-md text-center"
                   >
                     <div className="space-y-3">
                       <Trophy size={40} className="text-[#00F0FF] mx-auto" />
@@ -1850,6 +1852,8 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                           toss: { ...m.toss, decision: 'BAT' },
                           teams: { ...m.teams, battingTeamId: winnerId, bowlingTeamId: loserId }
                         }));
+                        setSelectionTarget('STRIKER');
+                        setStatus('OPENERS');
                       }}
                       className="w-full p-6 rounded-[24px] bg-gradient-to-r from-[#39FF14]/15 to-[#39FF14]/5 border-2 border-[#39FF14]/60 hover:border-[#39FF14] hover:shadow-[0_0_20px_rgba(57,255,20,0.2)] transition-all space-y-2 active:scale-95"
                     >
@@ -1868,6 +1872,8 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                           toss: { ...m.toss, decision: 'BOWL' },
                           teams: { ...m.teams, battingTeamId: loserId, bowlingTeamId: winnerId }
                         }));
+                        setSelectionTarget('STRIKER');
+                        setStatus('OPENERS');
                       }}
                       className="w-full p-6 rounded-[24px] bg-gradient-to-r from-[#BC13FE]/15 to-[#BC13FE]/5 border-2 border-[#BC13FE]/60 hover:border-[#BC13FE] hover:shadow-[0_0_20px_rgba(188,19,254,0.2)] transition-all space-y-2 active:scale-95"
                     >
@@ -1876,62 +1882,13 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                       <p className="text-[11px] text-white/50">Chase later</p>
                     </button>
 
-                    {/* Change winner link */}
+                    {/* Go back to change winner */}
                     <button
                       type="button"
-                      onClick={() => setMatch(m => ({ ...m, toss: { ...m.toss, winnerId: null } }))}
+                      onClick={() => setMatch(m => ({ ...m, toss: { ...m.toss, winnerId: null, decision: null } }))}
                       className="text-[11px] font-black text-white/30 uppercase tracking-[0.1em] hover:text-white/50 transition-all"
                     >
                       Change toss winner
-                    </button>
-                  </motion.div>
-                )}
-
-                {/* STEP 3: Confirm & Proceed */}
-                {match.toss.winnerId && match.toss.decision && (
-                  <motion.div
-                    key="toss-confirm"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    className="space-y-8 w-full max-w-md text-center"
-                  >
-                    <div className="p-6 rounded-[24px] bg-white/5 border border-white/10 space-y-4">
-                      <p className="text-[11px] font-black text-white/40 uppercase tracking-[0.2em]">Toss Result</p>
-                      <div className="flex items-center justify-center gap-3">
-                        <div className="flex flex-col items-center gap-1">
-                          <div className="w-10 h-10 rounded-full bg-[#FFD600]/20 border border-[#FFD600] flex items-center justify-center font-black text-[14px] text-[#FFD600]">A</div>
-                          <p className="text-[9px] font-black text-white uppercase">{match.teams.teamA.name}</p>
-                        </div>
-                        <p className="text-[12px] font-black text-white/20">VS</p>
-                        <div className="flex flex-col items-center gap-1">
-                          <div className="w-10 h-10 rounded-full bg-[#00F0FF]/20 border border-[#00F0FF] flex items-center justify-center font-black text-[14px] text-[#00F0FF]">B</div>
-                          <p className="text-[9px] font-black text-white uppercase">{match.teams.teamB.name}</p>
-                        </div>
-                      </div>
-                      <div className="border-t border-white/5 pt-3 space-y-1">
-                        <p className="text-[13px] font-black text-white uppercase">{getTeamObj(match.toss.winnerId).name} won the toss</p>
-                        <p className="text-[13px] font-black text-[#00F0FF] uppercase">and elected to {match.toss.decision === 'BAT' ? 'bat' : 'bowl'}</p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStatus('OPENERS');
-                        setSelectionTarget('STRIKER');
-                      }}
-                      className="w-full py-4 rounded-[20px] bg-[#00F0FF] text-black font-black uppercase text-[13px] tracking-[0.2em] shadow-[0_0_20px_rgba(0,240,255,0.3)] flex items-center justify-center gap-2 active:scale-95 transition-all"
-                    >
-                      Select Openers <ArrowRight size={16} />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setMatch(m => ({ ...m, toss: { ...m.toss, decision: null, winnerId: null } }))}
-                      className="text-[11px] font-black text-white/30 uppercase tracking-[0.1em] hover:text-white/50 transition-all"
-                    >
-                      Redo Toss
                     </button>
                   </motion.div>
                 )}
