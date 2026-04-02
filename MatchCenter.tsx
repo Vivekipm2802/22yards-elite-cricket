@@ -181,6 +181,16 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     localStorage.setItem('22YARDS_ACTIVE_MATCH', JSON.stringify(match));
   }, [match]);
 
+  // Keep match.status in sync with the UI status state
+  useEffect(() => {
+    if (status && status !== match.status && status !== 'SUMMARY') {
+      setMatch(m => {
+        if (m.status === status) return m;
+        return { ...m, status };
+      });
+    }
+  }, [status]);
+
   const liveChannelRef = useRef<any>(null);
 
   useEffect(() => {
@@ -195,7 +205,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   }, [match.matchId]);
 
   useEffect(() => {
-    if (status !== 'LIVE' || !match.matchId) return;
+    if (!match.matchId || (status !== 'LIVE' && status !== 'INNINGS_BREAK' && status !== 'COMPLETED' && status !== 'SUMMARY')) return;
     pushLiveMatchState(match);
     liveChannelRef.current?.send({
       type: 'broadcast',
@@ -310,7 +320,8 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           });
           return { ...m, teams: { ...m.teams, [bKey]: { ...m.teams[bKey], squad: updatedBowlingSquad } } };
         });
-        commitBall(0, undefined, true, 'STUMPED', wk.id);
+        commitBall(0, pendingExtra || undefined, true, 'STUMPED', wk.id);
+        setPendingExtra(null);
       } else {
         setWicketWizard({ open: false, type: 'STUMPED' });
         setSelectionTarget('FIELDER');
@@ -319,7 +330,8 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
 
     setWicketWizard({ open: false });
-    commitBall(runs, undefined, true, type);
+    commitBall(runs, pendingExtra || undefined, true, type);
+    setPendingExtra(null);
   };
 
   const handleFielderSelected = (fielderId: PlayerID) => {
@@ -337,7 +349,8 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       });
       return { ...m, teams: { ...m.teams, [bowlingKey]: { ...m.teams[bowlingKey], squad: updatedBowlingSquad } } };
     });
-    commitBall(0, undefined, true, wType, fielderId);
+    commitBall(0, pendingExtra || undefined, true, wType, fielderId);
+    setPendingExtra(null);
   };
 
   const handleUndo = () => {
@@ -356,10 +369,10 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (p.id === lastBall.strikerId) {
           return {
             ...p,
-            runs: Math.max(0, (p.runs || 0) - (lastBall.runsScored || 0)),
+            runs: Math.max(0, (p.runs || 0) - (lastBall.type === 'BYE' || lastBall.type === 'LB' ? 0 : (lastBall.runsScored || 0))),
             balls: Math.max(0, (p.balls || 0) - (isLegalDelivery ? 1 : 0)),
-            fours: lastBall.runsScored === 4 && isLegalDelivery ? Math.max(0, (p.fours || 0) - 1) : (p.fours || 0),
-            sixes: lastBall.runsScored === 6 && isLegalDelivery ? Math.max(0, (p.sixes || 0) - 1) : (p.sixes || 0),
+            fours: lastBall.runsScored === 4 && lastBall.type !== 'BYE' && lastBall.type !== 'LB' ? Math.max(0, (p.fours || 0) - 1) : (p.fours || 0),
+            sixes: lastBall.runsScored === 6 && lastBall.type !== 'BYE' && lastBall.type !== 'LB' ? Math.max(0, (p.sixes || 0) - 1) : (p.sixes || 0),
             isOut: lastBall.isWicket ? false : p.isOut,
             wicketType: lastBall.isWicket ? undefined : p.wicketType,
           };
@@ -372,7 +385,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           return {
             ...p,
             wickets: lastBall.isWicket ? Math.max(0, (p.wickets || 0) - 1) : (p.wickets || 0),
-            runs_conceded: Math.max(0, (p.runs_conceded || 0) - (lastBall.runsScored || 0) - (isNoBallOrWide ? 1 : 0)),
+            runs_conceded: Math.max(0, (p.runs_conceded || 0) - (lastBall.type === 'BYE' || lastBall.type === 'LB' ? 0 : (lastBall.runsScored || 0)) - (isNoBallOrWide ? 1 : 0)),
             balls_bowled: Math.max(0, (p.balls_bowled || 0) - (isLegalDelivery ? 1 : 0)),
           };
         }
@@ -577,10 +590,10 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (p.id === m.crease.strikerId) {
           return {
             ...p,
-            runs: (p.runs || 0) + runs,
+            runs: (p.runs || 0) + (extra === 'BYE' || extra === 'LB' ? 0 : runs),
             balls: (p.balls || 0) + (isLegalDelivery ? 1 : 0),
-            fours: runs === 4 && isLegalDelivery ? (p.fours || 0) + 1 : (p.fours || 0),
-            sixes: runs === 6 && isLegalDelivery ? (p.sixes || 0) + 1 : (p.sixes || 0),
+            fours: runs === 4 && extra !== 'BYE' && extra !== 'LB' ? (p.fours || 0) + 1 : (p.fours || 0),
+            sixes: runs === 6 && extra !== 'BYE' && extra !== 'LB' ? (p.sixes || 0) + 1 : (p.sixes || 0),
             isOut: isWicket ? true : p.isOut,
             wicketType: isWicket ? wicketType : p.wicketType,
           };
@@ -593,7 +606,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           return {
             ...p,
             wickets: isWicket ? (p.wickets || 0) + 1 : (p.wickets || 0),
-            runs_conceded: (p.runs_conceded || 0) + runs + (isNoBallOrWide ? 1 : 0),
+            runs_conceded: (p.runs_conceded || 0) + (extra === 'BYE' || extra === 'LB' ? 0 : runs) + (isNoBallOrWide ? 1 : 0),
             balls_bowled: (p.balls_bowled || 0) + (isLegalDelivery ? 1 : 0),
           };
         }
@@ -651,7 +664,9 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
       // --- INNINGS TRANSITION ---
       const totalOvers = Math.floor(newLiveScore.balls / 6);
-      const shouldTransition = newLiveScore.wickets >= 10 || (totalOvers >= m.config.overs && newBallsInOver === 0);
+      const battingSquadSize = (m.teams[battingTeamKey]?.squad || []).length;
+      const allOutWickets = Math.max(1, battingSquadSize - 1);
+      const shouldTransition = newLiveScore.wickets >= allOutWickets || (totalOvers >= m.config.overs && newBallsInOver === 0);
 
       let newStatus = m.status;
       let newCurrentInnings = m.currentInnings;
@@ -1943,6 +1958,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         const loserId = winnerId === 'A' ? 'B' : 'A';
                         setMatch(m => ({
                           ...m,
+                          status: 'OPENERS',
                           toss: { ...m.toss, decision: 'BAT' },
                           teams: { ...m.teams, battingTeamId: winnerId, bowlingTeamId: loserId }
                         }));
@@ -1963,6 +1979,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         const loserId = winnerId === 'A' ? 'B' : 'A';
                         setMatch(m => ({
                           ...m,
+                          status: 'OPENERS',
                           toss: { ...m.toss, decision: 'BOWL' },
                           teams: { ...m.teams, battingTeamId: loserId, bowlingTeamId: winnerId }
                         }));
@@ -2147,7 +2164,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     key={player.id}
                     type="button"
                     onClick={() => {
-                      setMatch(m => ({ ...m, crease: { ...m.crease, bowlerId: player.id } }));
+                      setMatch(m => ({ ...m, status: 'LIVE', crease: { ...m.crease, bowlerId: player.id } }));
                       setSelectionTarget(null);
                       setStatus('LIVE');
                     }}
@@ -2207,10 +2224,20 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           const wicketNumber = match.liveScore.wickets + 1;
 
           // Current over balls display
-          const currentOverBalls = currentHistory.filter(b => {
-            const overNum = Math.floor(match.liveScore.balls / 6);
-            return b.overNumber === (ballsInOver === 0 && match.liveScore.balls > 0 ? overNum - 1 : overNum);
-          });
+          const currentOverBalls = (() => {
+            const allBalls = currentHistory;
+            if (allBalls.length === 0) return [];
+            const result = [];
+            let legalCount = 0;
+            for (let i = allBalls.length - 1; i >= 0; i--) {
+              const b = allBalls[i];
+              const isLegal = !b.type || b.type === 'LEGAL' || b.type === 'BYE' || b.type === 'LB';
+              result.unshift(b);
+              if (isLegal) legalCount++;
+              if (legalCount >= 6) break;
+            }
+            return result;
+          })();
 
           // Bowler stats
           const bowlerOvers = bowler ? `${Math.floor((bowler.balls_bowled || 0) / 6)}.${(bowler.balls_bowled || 0) % 6}` : '0.0';
@@ -2534,11 +2561,13 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     className="fixed inset-0 z-[5000] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
+                    onClick={() => { setWicketWizard({ open: false }); setPendingExtra(null); }}
                   >
                     <motion.div
                       initial={{ scale: 0.9, y: 40 }}
                       animate={{ scale: 1, y: 0 }}
                       exit={{ scale: 0.9, y: 40 }}
+                      onClick={(e) => e.stopPropagation()}
                       className="w-full max-w-sm bg-[#0A0A0A] border border-white/10 rounded-3xl overflow-hidden shadow-2xl"
                     >
                       <div className="p-6 border-b border-white/5 bg-white/[0.02]">
@@ -2577,12 +2606,14 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
+                    onClick={() => { setSelectionTarget(null); setPendingExtra(null); }}
                     className="fixed inset-0 z-[5000] bg-black/95 backdrop-blur-sm flex items-end justify-center p-4"
                   >
                     <motion.div
                       initial={{ y: 100 }}
                       animate={{ y: 0 }}
                       exit={{ y: 100 }}
+                      onClick={(e) => e.stopPropagation()}
                       className="w-full max-w-md bg-[#0A0A0A] border border-white/10 rounded-t-3xl overflow-hidden max-h-[70vh] flex flex-col"
                     >
                       <div className="p-4 border-b border-white/5">
@@ -2620,12 +2651,14 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
+                    onClick={() => setSelectionTarget(null)}
                     className="fixed inset-0 z-[5000] bg-black/95 backdrop-blur-sm flex items-end justify-center p-4"
                   >
                     <motion.div
                       initial={{ y: 100 }}
                       animate={{ y: 0 }}
                       exit={{ y: 100 }}
+                      onClick={(e) => e.stopPropagation()}
                       className="w-full max-w-md bg-[#0A0A0A] border border-white/10 rounded-t-3xl overflow-hidden max-h-[70vh] flex flex-col"
                     >
                       <div className="p-4 border-b border-white/5">
@@ -2641,12 +2674,15 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                               key={player.id}
                               type="button"
                               onClick={() => {
-                                setMatch(m => ({ ...m, crease: { ...m.crease, strikerId: player.id } }));
-                                if (!match.crease.bowlerId) {
-                                  setSelectionTarget('NEXT_BOWLER');
-                                } else {
-                                  setSelectionTarget(null);
-                                }
+                                setMatch(m => {
+                                  const updated = { ...m, crease: { ...m.crease, strikerId: player.id } };
+                                  if (!updated.crease.bowlerId) {
+                                    setTimeout(() => setSelectionTarget('NEXT_BOWLER'), 50);
+                                  } else {
+                                    setTimeout(() => setSelectionTarget(null), 0);
+                                  }
+                                  return updated;
+                                });
                               }}
                               whileTap={{ scale: 0.95 }}
                               className="w-full p-3 rounded-xl bg-white/5 border border-white/10 hover:border-[#00F0FF]/40 flex items-center gap-3 transition-all"
@@ -2672,12 +2708,14 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
+                    onClick={() => setSelectionTarget(null)}
                     className="fixed inset-0 z-[5000] bg-black/95 backdrop-blur-sm flex items-end justify-center p-4"
                   >
                     <motion.div
                       initial={{ y: 100 }}
                       animate={{ y: 0 }}
                       exit={{ y: 100 }}
+                      onClick={(e) => e.stopPropagation()}
                       className="w-full max-w-md bg-[#0A0A0A] border border-white/10 rounded-t-3xl overflow-hidden max-h-[70vh] flex flex-col"
                     >
                       <div className="p-4 border-b border-white/5">
@@ -2894,7 +2932,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                       // Share to WhatsApp
                       const target = match.config.target || match.liveScore.runs + 1;
                       const msg = encodeURIComponent(
-                        `🏏 ${battingTeamName} scored ${match.liveScore.runs}/${match.liveScore.wickets} in ${overs}.${balls} overs\n\nTarget: ${target}\n\nFollow live at: [match-link]`
+                        `🏏 ${battingTeamName} scored ${match.liveScore.runs}/${match.liveScore.wickets} in ${overs}.${balls} overs\n\nTarget: ${target}\n\n📺 Follow live:\n${window.location.origin}${window.location.pathname}?watch=${match.matchId}`
                       );
                       window.open(`https://wa.me/?text=${msg}`);
                     }}
@@ -2911,6 +2949,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                       const target = match.config.target || match.liveScore.runs + 1;
                       setMatch(m => ({
                         ...m,
+                        status: 'OPENERS',
                         config: { ...m.config, target: target, innings1Score: m.liveScore.runs, innings1Wickets: m.liveScore.wickets, innings1Balls: m.liveScore.balls },
                         teams: { ...m.teams, battingTeamId: m.teams.bowlingTeamId, bowlingTeamId: m.teams.battingTeamId },
                         liveScore: { runs: 0, wickets: 0, balls: 0 },

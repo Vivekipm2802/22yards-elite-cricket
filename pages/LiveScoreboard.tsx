@@ -146,10 +146,20 @@ const LiveScoreboard: React.FC<{ matchId: string }> = ({ matchId }) => {
   const isCompleted = status === 'COMPLETED';
 
   /* last 6 balls of current innings (for "this over" display) */
-  const currentOverStart = Math.floor(liveScore.balls / 6) * 6;
-  const recentBalls = (history || [])
-    .filter(b => b.innings === currentInnings && b.ballNumber > currentOverStart)
-    .slice(-6);
+  const recentBalls = (() => {
+    const allBalls = (history || []).filter(b => b.innings === currentInnings);
+    if (allBalls.length === 0) return [];
+    const result = [];
+    let legalCount = 0;
+    for (let i = allBalls.length - 1; i >= 0; i--) {
+      const b = allBalls[i];
+      const isLegal = !b.type || b.type === 'LEGAL' || b.type === 'BYE' || b.type === 'LB';
+      result.unshift(b);
+      if (isLegal) legalCount++;
+      if (legalCount >= 6) break;
+    }
+    return result;
+  })();
 
   const ballLabel = (b: any) => {
     if (b.isWicket) return 'W';
@@ -369,14 +379,33 @@ const LiveScoreboard: React.FC<{ matchId: string }> = ({ matchId }) => {
         )}
 
         {/* Match result */}
-        {isCompleted && (
-          <div className="py-8 text-center space-y-2 border border-[#CC1010]/20 rounded-[28px] bg-[#CC1010]/5">
-            <p className="text-[8px] font-black text-[#CC1010] uppercase tracking-[0.4em]">MATCH COMPLETE</p>
-            <p className="text-[9px] font-black text-white/40 uppercase tracking-widest px-4">
-              Check the 22YARDS app for the full scorecard
-            </p>
-          </div>
-        )}
+        {isCompleted && (() => {
+          const inn1Score = config?.innings1Score ?? 0;
+          const inn2Score = liveScore.runs;
+          const target = config?.target ?? inn1Score + 1;
+          let resultText = '';
+
+          if (currentInnings === 2 || config?.target) {
+            if (inn2Score >= target) {
+              const wicketsLeft = 10 - liveScore.wickets;
+              resultText = `${battingTeam?.name} won by ${wicketsLeft} wicket${wicketsLeft !== 1 ? 's' : ''}`;
+            } else if (inn2Score === inn1Score) {
+              resultText = `Match Tied — Both teams scored ${inn1Score}`;
+            } else {
+              const runDiff = inn1Score - inn2Score;
+              resultText = `${bowlingTeam?.name} won by ${runDiff} run${runDiff !== 1 ? 's' : ''}`;
+            }
+          } else {
+            resultText = 'Match Complete';
+          }
+
+          return (
+            <div className="py-8 text-center space-y-3 border border-[#CC1010]/20 rounded-[28px] bg-[#CC1010]/5">
+              <p className="text-[8px] font-black text-[#CC1010] uppercase tracking-[0.4em]">MATCH COMPLETE</p>
+              <p className="font-heading text-2xl italic uppercase text-white px-4">{resultText}</p>
+            </div>
+          );
+        })()}
 
         {/* CRR / RRR mini stats */}
         {!isCompleted && liveScore.balls > 0 && (
@@ -395,6 +424,83 @@ const LiveScoreboard: React.FC<{ matchId: string }> = ({ matchId }) => {
                 <p className="text-[7px] font-black text-white/30 uppercase tracking-widest mt-1">RRR</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Full Scorecard */}
+        {(history || []).length > 0 && (
+          <div className="space-y-4">
+            <p className="text-[7px] font-black text-white/20 uppercase tracking-widest ml-1">SCORECARD</p>
+            {[battingKey, bowlingKey].map((teamKey) => {
+              const team = teams[teamKey];
+              if (!team?.squad || team.squad.length === 0) return null;
+              const teamBatters = team.squad.filter(p => (p.runs || 0) > 0 || (p.balls || 0) > 0 || p.isOut);
+              if (teamBatters.length === 0) return null;
+              return (
+                <div key={teamKey} className="bg-[#121212] border border-white/5 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-3 border-b border-white/5">
+                    <p className="text-[9px] font-black text-white/60 uppercase tracking-wider">{team.name} — Batting</p>
+                  </div>
+                  <div className="divide-y divide-white/5">
+                    <div className="flex px-4 py-2 text-[7px] font-black text-white/30 uppercase tracking-wider">
+                      <span className="flex-1">Batter</span>
+                      <span className="w-8 text-right">R</span>
+                      <span className="w-8 text-right">B</span>
+                      <span className="w-6 text-right">4s</span>
+                      <span className="w-6 text-right">6s</span>
+                    </div>
+                    {teamBatters.map(p => (
+                      <div key={p.id} className="flex items-center px-4 py-2.5">
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[10px] font-black text-white truncate block">{p.name}</span>
+                          <span className="text-[7px] text-white/30">{p.isOut ? 'out' : 'not out'}</span>
+                        </div>
+                        <span className="w-8 text-right font-numbers text-[11px] font-black text-white">{p.runs || 0}</span>
+                        <span className="w-8 text-right font-numbers text-[10px] text-white/50">{p.balls || 0}</span>
+                        <span className="w-6 text-right font-numbers text-[9px] text-white/40">{p.fours || 0}</span>
+                        <span className="w-6 text-right font-numbers text-[9px] text-white/40">{p.sixes || 0}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {/* Bowling figures */}
+            {[bowlingKey, battingKey].map((teamKey) => {
+              const team = teams[teamKey];
+              if (!team?.squad) return null;
+              const teamBowlers = team.squad.filter(p => (p.balls_bowled || 0) > 0);
+              if (teamBowlers.length === 0) return null;
+              return (
+                <div key={`bowl-${teamKey}`} className="bg-[#121212] border border-white/5 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-3 border-b border-white/5">
+                    <p className="text-[9px] font-black text-white/60 uppercase tracking-wider">{team.name} — Bowling</p>
+                  </div>
+                  <div className="divide-y divide-white/5">
+                    <div className="flex px-4 py-2 text-[7px] font-black text-white/30 uppercase tracking-wider">
+                      <span className="flex-1">Bowler</span>
+                      <span className="w-10 text-right">O</span>
+                      <span className="w-8 text-right">R</span>
+                      <span className="w-6 text-right">W</span>
+                      <span className="w-10 text-right">Econ</span>
+                    </div>
+                    {teamBowlers.map(p => {
+                      const overs = `${Math.floor((p.balls_bowled || 0) / 6)}.${(p.balls_bowled || 0) % 6}`;
+                      const econ = (p.balls_bowled || 0) > 0 ? (((p.runs_conceded || 0) / (p.balls_bowled || 0)) * 6).toFixed(1) : '0.0';
+                      return (
+                        <div key={p.id} className="flex items-center px-4 py-2.5">
+                          <span className="flex-1 text-[10px] font-black text-white truncate">{p.name}</span>
+                          <span className="w-10 text-right font-numbers text-[10px] text-white/50">{overs}</span>
+                          <span className="w-8 text-right font-numbers text-[11px] font-black text-white">{p.runs_conceded || 0}</span>
+                          <span className="w-6 text-right font-numbers text-[11px] font-black text-[#CC1010]">{p.wickets || 0}</span>
+                          <span className="w-10 text-right font-numbers text-[9px] text-white/40">{econ}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
