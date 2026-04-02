@@ -1355,13 +1355,86 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setPhoneQuery('');
   };
 
-  const startQRScanner = () => {
+  const startQRScanner = async () => {
     setShowQRScanner(true);
     setQrScanStatus('SCANNING');
+    setQrScanError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 640 } }
+      });
+      qrStreamRef.current = stream;
+      // Wait for the video element to be available in DOM
+      setTimeout(() => {
+        if (qrVideoRef.current) {
+          qrVideoRef.current.srcObject = stream;
+          qrVideoRef.current.play();
+          // Start scanning loop
+          scanQRFrame();
+        }
+      }, 300);
+    } catch (err) {
+      setQrScanStatus('ERROR');
+      setQrScanError('Camera access denied. Please allow camera permission.');
+    }
+  };
+
+  const scanQRFrame = async () => {
+    if (!qrVideoRef.current || !qrCanvasRef.current) return;
+    const video = qrVideoRef.current;
+    const canvas = qrCanvasRef.current;
+    if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+      qrAnimRef.current = requestAnimationFrame(scanQRFrame);
+      return;
+    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    try {
+      const jsQR = (await import('jsqr')).default;
+      const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+      if (code && code.data) {
+        // Try to parse as 22YARDS player JSON
+        try {
+          const playerData = JSON.parse(code.data);
+          if (playerData.app === '22YARDS' && playerData.name) {
+            setQrScanStatus('SUCCESS');
+            // Fill player name and phone
+            setNewName(playerData.name);
+            setPhoneQuery(playerData.phone || '');
+            // Vibrate for feedback
+            if (navigator.vibrate) navigator.vibrate(100);
+            // Auto-close after short delay
+            setTimeout(() => closeQRScanner(), 800);
+            return; // Stop scanning
+          }
+        } catch {}
+        // Not valid 22YARDS QR — try raw text as name
+        setQrScanStatus('ERROR');
+        setQrScanError('Not a valid 22 Yards player QR code.');
+        setTimeout(() => { setQrScanStatus('SCANNING'); setQrScanError(''); }, 2000);
+      }
+    } catch {}
+    // Continue scanning
+    qrAnimRef.current = requestAnimationFrame(scanQRFrame);
   };
 
   const closeQRScanner = () => {
+    // Stop camera stream
+    if (qrStreamRef.current) {
+      qrStreamRef.current.getTracks().forEach(t => t.stop());
+      qrStreamRef.current = null;
+    }
+    // Cancel animation frame
+    if (qrAnimRef.current) {
+      cancelAnimationFrame(qrAnimRef.current);
+      qrAnimRef.current = null;
+    }
     setShowQRScanner(false);
+    setQrScanStatus('SCANNING');
   };
 
   const handleShareAction = (action: string) => {
@@ -4972,7 +5045,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
             onClick={closeQRScanner}
-            className="fixed inset-0 z-[4000] bg-black/95 flex items-center justify-center p-4"
+            className="fixed inset-0 z-[8000] bg-black/95 flex items-center justify-center p-4"
           >
             <motion.div
               initial={{ scale: 0.85, opacity: 0, y: 30 }}
