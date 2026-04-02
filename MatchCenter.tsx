@@ -172,6 +172,11 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [iceModeBanner, setIceModeBanner] = useState(false);
   const [iceModeDeclined, setIceModeDeclined] = useState(false);
 
+  // Match Settings (mid-match)
+  const [showMatchSettings, setShowMatchSettings] = useState(false);
+  const [abandonConfirm, setAbandonConfirm] = useState(false);
+  const [abandonReason, setAbandonReason] = useState('');
+
   // QR Scanner
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [qrScanStatus, setQrScanStatus] = useState<'SCANNING' | 'SUCCESS' | 'ERROR'>('SCANNING');
@@ -1280,6 +1285,19 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setShowAddPlayer({ open: false, team: null });
   };
 
+  // ABANDON MATCH handler
+  const handleAbandonMatch = () => {
+    const teamAName = match.teams.teamA?.name || 'Team A';
+    const teamBName = match.teams.teamB?.name || 'Team B';
+    const reason = abandonReason.trim() || 'Match abandoned';
+    setWinnerTeam({ name: 'Match Abandoned', id: null, margin: reason });
+    setMatch(m => ({ ...m, status: 'COMPLETED' }));
+    setShowMatchSettings(false);
+    setAbandonConfirm(false);
+    setAbandonReason('');
+    setTimeout(() => setStatus('SUMMARY'), 100);
+  };
+
   const handleSetCaptain = (playerId: PlayerID) => {
     if (!editingTeamId) return;
     const key = editingTeamId === 'A' ? 'teamA' : 'teamB';
@@ -1398,6 +1416,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               </button>
             )}
             <button onClick={() => setShowLiveScorecard(true)} className="p-2 text-[#00F0FF]"><ClipboardList size={20} /></button>
+            <button onClick={() => setShowMatchSettings(true)} className="p-2 text-white/40 hover:text-white hover:bg-white/5 rounded-full transition-all" title="Match Settings"><Settings size={18} /></button>
           </div>
         )}
       </div>
@@ -4693,6 +4712,114 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   {shareCopied ? 'Copied!' : 'Copy'}
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* MATCH SETTINGS MODAL (mid-match) */}
+      <AnimatePresence>
+        {showMatchSettings && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => { setShowMatchSettings(false); setAbandonConfirm(false); setAbandonReason(''); }}
+            className="fixed inset-0 z-[5000] bg-black/90 flex items-end justify-center"
+          >
+            <motion.div
+              initial={{ y: 300, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 300, opacity: 0 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg bg-[#0A0A0A] border-t border-white/10 rounded-t-[32px] p-6 space-y-5"
+            >
+              {/* Handle bar */}
+              <div className="flex justify-center">
+                <div className="w-10 h-1 rounded-full bg-white/20" />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <h3 className="font-heading text-lg uppercase italic text-[#00F0FF]">Match Settings</h3>
+                <button onClick={() => { setShowMatchSettings(false); setAbandonConfirm(false); setAbandonReason(''); }} className="p-2 text-white/40 hover:text-white"><X size={18} /></button>
+              </div>
+
+              {/* CHANGE SCORER */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-white/50 uppercase tracking-[0.15em] flex items-center gap-2">
+                  <Edit2 size={12} /> Change Scorer
+                </label>
+                <input
+                  type="text"
+                  value={match.config.scorerName || ''}
+                  onChange={(e) => setMatch(m => ({ ...m, config: { ...m.config, scorerName: e.target.value } }))}
+                  placeholder="Enter scorer name"
+                  className="w-full px-4 py-3 rounded-[16px] bg-white/5 border border-white/10 text-white text-[13px] placeholder:text-white/20 focus:outline-none focus:border-[#00F0FF]/50"
+                />
+                {match.config.scorerName && (
+                  <p className="text-[9px] text-[#39FF14]/60 font-bold uppercase tracking-wider">Current scorer: {match.config.scorerName}</p>
+                )}
+              </div>
+
+              {/* DIVIDER */}
+              <div className="h-px bg-white/10" />
+
+              {/* ABANDON MATCH */}
+              {!abandonConfirm ? (
+                <button
+                  onClick={() => setAbandonConfirm(true)}
+                  className="w-full py-4 rounded-[20px] bg-[#FF003C]/10 border border-[#FF003C]/30 text-[#FF003C] font-black text-[12px] uppercase tracking-wider hover:bg-[#FF003C]/20 transition-all flex items-center justify-center gap-3"
+                >
+                  <ShieldAlert size={18} />
+                  Abandon Match
+                </button>
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-3 p-4 rounded-[20px] bg-[#FF003C]/5 border border-[#FF003C]/20"
+                >
+                  <div className="flex items-center gap-2 text-[#FF003C]">
+                    <ShieldAlert size={16} />
+                    <span className="text-[11px] font-black uppercase tracking-wider">Are you sure?</span>
+                  </div>
+                  <p className="text-[10px] text-white/50">This action cannot be undone. The match will be recorded as abandoned.</p>
+
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-white/40 uppercase tracking-[0.15em]">Reason (optional)</label>
+                    <select
+                      value={abandonReason}
+                      onChange={(e) => setAbandonReason(e.target.value)}
+                      className="w-full px-4 py-3 rounded-[12px] bg-white/5 border border-white/10 text-white text-[12px] focus:outline-none focus:border-[#FF003C]/50 appearance-none"
+                    >
+                      <option value="">Select reason...</option>
+                      <option value="Rain / Bad weather">Rain / Bad weather</option>
+                      <option value="Bad light">Bad light</option>
+                      <option value="Player injury">Player injury</option>
+                      <option value="Unplayable pitch">Unplayable pitch</option>
+                      <option value="Mutual agreement">Mutual agreement</option>
+                      <option value="Insufficient players">Insufficient players</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  <div className="flex gap-3 pt-1">
+                    <button
+                      onClick={() => { setAbandonConfirm(false); setAbandonReason(''); }}
+                      className="flex-1 py-3 rounded-[16px] bg-white/5 border border-white/10 text-white text-[11px] font-black uppercase tracking-wider hover:bg-white/10 transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAbandonMatch}
+                      className="flex-1 py-3 rounded-[16px] bg-[#FF003C] text-white text-[11px] font-black uppercase tracking-wider hover:bg-[#FF003C]/90 transition-all active:scale-[0.98]"
+                    >
+                      Confirm Abandon
+                    </button>
+                  </div>
+                </motion.div>
+              )}
             </motion.div>
           </motion.div>
         )}
