@@ -162,6 +162,11 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [fireModeBanner, setFireModeBanner] = useState(false);
   const [fireModeDeclined, setFireModeDeclined] = useState(false);
 
+  // ICE MODE: Dynamic theme for slow run rates
+  const [iceMode, setIceMode] = useState(false);
+  const [iceModeBanner, setIceModeBanner] = useState(false);
+  const [iceModeDeclined, setIceModeDeclined] = useState(false);
+
   // QR Scanner
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [qrScanStatus, setQrScanStatus] = useState<'SCANNING' | 'SUCCESS' | 'ERROR'>('SCANNING');
@@ -273,18 +278,27 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     requestAnimationFrame(animate);
   }, [summaryPhase, match.config.innings1Score, match.liveScore.runs]);
 
-  // FIRE MODE: Monitor CRR during live scoring
+  // FIRE MODE + ICE MODE: Monitor CRR during live scoring
   useEffect(() => {
     if (status !== 'LIVE') return;
-    const crr = match.liveScore.balls > 0 ? (match.liveScore.runs / match.liveScore.balls) * 6 : 0;
+    const balls = match.liveScore.balls || 0;
+    const crr = balls > 0 ? (match.liveScore.runs / balls) * 6 : 0;
 
+    // FIRE MODE: CRR >= 15
     if (crr >= 15 && !fireMode && !fireModeDeclined && !fireModeBanner) {
+      if (iceMode) setIceMode(false); // exit ice if entering fire
       setFireModeBanner(true);
     }
-
-    // Auto-switch back when CRR drops below 15
     if (crr < 15 && fireMode) {
       setFireMode(false);
+    }
+
+    // ICE MODE: CRR < 4 (only after at least 6 balls to avoid false trigger at start)
+    if (balls >= 6 && crr < 4 && crr > 0 && !iceMode && !iceModeDeclined && !iceModeBanner && !fireMode && !fireModeBanner) {
+      setIceModeBanner(true);
+    }
+    if ((crr >= 4 || balls < 6) && iceMode) {
+      setIceMode(false);
     }
   }, [match.liveScore.runs, match.liveScore.balls, status]);
 
@@ -2658,7 +2672,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           const nonStrikerSR = nonStriker && (nonStriker.balls || 0) > 0 ? (((nonStriker.runs || 0) / (nonStriker.balls || 0)) * 100).toFixed(0) : '0';
 
           return (
-            <div className={`flex-1 flex flex-col overflow-hidden relative ${fireMode ? 'bg-[#1a0500]' : 'bg-black'}`}>
+            <div className={`flex-1 flex flex-col overflow-hidden relative ${fireMode ? 'bg-[#1a0500]' : iceMode ? 'bg-[#000a1a]' : 'bg-black'}`}>
               {/* Fire mode ambient effects */}
               {fireMode && (
                 <>
@@ -2667,6 +2681,21 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   }} />
                   <div className="absolute bottom-0 left-0 right-0 h-32 z-0 pointer-events-none opacity-30" style={{
                     background: 'linear-gradient(to top, rgba(255,109,0,0.5), transparent)'
+                  }} />
+                </>
+              )}
+              {/* Ice mode ambient effects */}
+              {iceMode && (
+                <>
+                  <div className="absolute inset-0 z-0 pointer-events-none opacity-25" style={{
+                    background: 'radial-gradient(ellipse at top, rgba(100,180,255,0.3) 0%, rgba(0,100,200,0.15) 40%, transparent 70%)'
+                  }} />
+                  <div className="absolute top-0 left-0 right-0 h-40 z-0 pointer-events-none opacity-20" style={{
+                    background: 'linear-gradient(to bottom, rgba(100,200,255,0.4), transparent)'
+                  }} />
+                  <div className="absolute inset-0 z-0 pointer-events-none opacity-[0.03]" style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0L30 60M0 30L60 30M8.8 8.8L51.2 51.2M51.2 8.8L8.8 51.2' stroke='%2380D0FF' stroke-width='0.5'/%3E%3C/svg%3E")`,
+                    backgroundSize: '30px 30px'
                   }} />
                 </>
               )}
@@ -2707,6 +2736,42 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 )}
               </AnimatePresence>
 
+              {/* ICE MODE BANNER */}
+              <AnimatePresence>
+                {iceModeBanner && (
+                  <motion.div
+                    initial={{ y: -80, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -80, opacity: 0 }}
+                    className="absolute top-0 left-0 right-0 z-[100] p-3 bg-gradient-to-r from-[#1a3a5c] via-[#2196F3] to-[#80D8FF] shadow-[0_4px_20px_rgba(33,150,243,0.4)]"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-1">
+                        <ZapOff size={20} className="text-white animate-pulse" />
+                        <div>
+                          <p className="text-[11px] font-black text-white uppercase">Run rate freezing!</p>
+                          <p className="text-[8px] text-white/80">Switch to FROST MODE?</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setIceMode(true); setIceModeBanner(false); }}
+                          className="px-4 py-2 rounded-lg bg-white text-[#1565C0] font-black text-[10px] uppercase active:scale-95"
+                        >
+                          FREEZE
+                        </button>
+                        <button
+                          onClick={() => { setIceModeBanner(false); setIceModeDeclined(true); }}
+                          className="px-3 py-2 rounded-lg bg-black/30 text-white font-black text-[10px] uppercase active:scale-95"
+                        >
+                          NAH
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* TOP STATUS BAR */}
               <div className="shrink-0 px-4 py-3 bg-black/60 backdrop-blur border-b border-white/5">
                 <div className="flex items-center justify-between mb-2">
@@ -2714,10 +2779,10 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     {getTeamInitials(battingTeamName)}
                   </div>
                   <div className="text-center">
-                    <div className={`font-numbers text-2xl font-black ${fireMode ? 'text-[#FF6D00]' : 'text-[#00F0FF]'}`}>
+                    <div className={`font-numbers text-2xl font-black ${fireMode ? 'text-[#FF6D00]' : iceMode ? 'text-[#80D8FF]' : 'text-[#00F0FF]'}`}>
                       {match.liveScore.runs}/{match.liveScore.wickets}
                     </div>
-                    <div className={`text-[9px] ${fireMode ? 'text-[#FF6D00]/60' : 'text-white/50'}`}>
+                    <div className={`text-[9px] ${fireMode ? 'text-[#FF6D00]/60' : iceMode ? 'text-[#80D8FF]/60' : 'text-white/50'}`}>
                       {overs}.{ballsInOver} | CRR {crr}
                     </div>
                   </div>
@@ -3497,6 +3562,9 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                       setFireMode(false);
                       setFireModeBanner(false);
                       setFireModeDeclined(false);
+                      setIceMode(false);
+                      setIceModeBanner(false);
+                      setIceModeDeclined(false);
                     }}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.95 }}
