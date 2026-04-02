@@ -190,13 +190,15 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <label className="text-[9px] font-black text-[#00F0FF] uppercase tracking-[0.3em] ml-1">MOBILE UPLINK</label>
             <div className="relative group">
               <div className="absolute left-5 top-1/2 -translate-y-1/2 text-white/10 group-focus-within:text-[#00F0FF] transition-colors"><Smartphone size={18} /></div>
-              <input 
-                type="tel" 
-                placeholder="+91..." 
-                className="w-full bg-black/40 border border-white/5 rounded-xl py-4 sm:py-5 pl-12 pr-6 outline-none text-white font-bold text-sm focus:border-[#00F0FF]/30 transition-all font-numbers placeholder:text-white/20" 
-                value={phone} 
-                onChange={(e) => setPhone(e.target.value)} 
-                disabled={loading} 
+              <input
+                type="tel"
+                inputMode="numeric"
+                placeholder="+91..."
+                maxLength={10}
+                className="w-full bg-black/40 border border-white/5 rounded-xl py-4 sm:py-5 pl-12 pr-6 outline-none text-white font-bold text-sm focus:border-[#00F0FF]/30 transition-all font-numbers placeholder:text-white/20"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                disabled={loading}
               />
             </div>
           </div>

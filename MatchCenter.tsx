@@ -4615,10 +4615,12 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     )}
                   </div>
                   <input
-                    type="text"
-                    placeholder="Phone (optional)"
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="Phone (10 digits)"
                     value={phoneQuery}
-                    onChange={(e) => setPhoneQuery(e.target.value)}
+                    onChange={(e) => setPhoneQuery(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    maxLength={10}
                     className="w-full px-3 py-3 min-h-[48px] rounded-[12px] bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none"
                   />
                   <button
@@ -4929,12 +4931,14 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
               {/* Phone Number */}
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-white/50 uppercase tracking-[0.15em]">Phone Number (optional)</label>
+                <label className="text-[10px] font-black text-white/50 uppercase tracking-[0.15em]">Phone Number (10 digits)</label>
                 <input
                   type="tel"
+                  inputMode="numeric"
                   value={addPlayerPhone}
-                  onChange={(e) => setAddPlayerPhone(e.target.value)}
-                  placeholder="Enter phone number"
+                  onChange={(e) => setAddPlayerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  maxLength={10}
+                  placeholder="Enter 10-digit number"
                   className="w-full px-4 py-3 rounded-[16px] bg-white/5 border border-white/10 text-white text-[13px] placeholder:text-white/20 focus:outline-none focus:border-[#00F0FF]/50"
                 />
               </div>
@@ -4966,26 +4970,92 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            onClick={closeQRScanner}
             className="fixed inset-0 z-[4000] bg-black/95 flex items-center justify-center p-4"
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-md bg-[#0A0A0A] border border-white/10 rounded-[40px] overflow-hidden p-6 space-y-4"
+              initial={{ scale: 0.85, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 350, mass: 0.8 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm bg-[#0A0A0A] border border-white/10 rounded-[32px] overflow-hidden"
             >
-              <div className="flex items-center justify-between">
-                <h3 className="font-heading text-lg uppercase italic text-[#00F0FF]">QR Scanner</h3>
-                <button onClick={closeQRScanner} className="p-2 text-white/40 hover:text-white">
+              {/* Header */}
+              <div className="p-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <motion.div
+                    animate={{ rotate: [0, 10, -10, 0] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                    className="w-9 h-9 rounded-full bg-[#00F0FF]/10 flex items-center justify-center"
+                  >
+                    <Camera size={16} className="text-[#00F0FF]" />
+                  </motion.div>
+                  <div>
+                    <h3 className="font-heading text-base uppercase italic text-[#00F0FF]">QR Scanner</h3>
+                    <p className="text-[8px] text-white/30 uppercase tracking-widest">Scan player ID</p>
+                  </div>
+                </div>
+                <button onClick={closeQRScanner} className="p-2 text-white/40 hover:text-white rounded-full hover:bg-white/5 transition-all">
                   <X size={18} />
                 </button>
               </div>
-              <div className="relative w-full aspect-square rounded-[20px] bg-black border-2 border-white/20 flex items-center justify-center overflow-hidden">
-                <video ref={qrVideoRef} className="absolute inset-0 w-full h-full object-cover" autoPlay playsInline />
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-48 h-48 border-2 border-[#00F0FF] rounded-[12px]" />
+
+              {/* Scanner viewport */}
+              <div className="px-5 pb-2">
+                <div className="relative w-full aspect-square rounded-[20px] bg-black overflow-hidden">
+                  <video ref={qrVideoRef} className="absolute inset-0 w-full h-full object-cover" autoPlay playsInline />
+
+                  {/* Corner brackets instead of full border */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-52 h-52 relative">
+                      {/* Top-left */}
+                      <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-[#00F0FF] rounded-tl-lg" />
+                      {/* Top-right */}
+                      <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-[#00F0FF] rounded-tr-lg" />
+                      {/* Bottom-left */}
+                      <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-[#00F0FF] rounded-bl-lg" />
+                      {/* Bottom-right */}
+                      <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-[#00F0FF] rounded-br-lg" />
+
+                      {/* Animated scan line */}
+                      <motion.div
+                        animate={{ y: [0, 192, 0] }}
+                        transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                        className="absolute left-2 right-2 h-[2px] bg-gradient-to-r from-transparent via-[#00F0FF] to-transparent shadow-[0_0_12px_rgba(0,240,255,0.6)]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Dim overlay outside scan area */}
+                  <div className="absolute inset-0 pointer-events-none" style={{
+                    background: 'radial-gradient(circle at center, transparent 35%, rgba(0,0,0,0.6) 65%)'
+                  }} />
                 </div>
-                <p className="relative z-10 text-[12px] text-white/60 text-center">{qrScanStatus === 'SCANNING' ? 'Point at QR code' : qrScanError}</p>
+              </div>
+
+              {/* Status text */}
+              <div className="p-5 pt-3 text-center">
+                <motion.p
+                  key={qrScanStatus}
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`text-[11px] font-bold uppercase tracking-wider ${
+                    qrScanStatus === 'SCANNING' ? 'text-white/40' :
+                    qrScanStatus === 'SUCCESS' ? 'text-[#39FF14]' : 'text-[#FF003C]'
+                  }`}
+                >
+                  {qrScanStatus === 'SCANNING' ? 'Point camera at QR code' :
+                   qrScanStatus === 'SUCCESS' ? 'Player found!' : qrScanError || 'Scan failed'}
+                </motion.p>
+                {qrScanStatus === 'SCANNING' && (
+                  <div className="flex items-center justify-center gap-1.5 mt-2">
+                    <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.5, repeat: Infinity, delay: 0 }} className="w-1.5 h-1.5 rounded-full bg-[#00F0FF]" />
+                    <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }} className="w-1.5 h-1.5 rounded-full bg-[#00F0FF]" />
+                    <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.5, repeat: Infinity, delay: 0.6 }} className="w-1.5 h-1.5 rounded-full bg-[#00F0FF]" />
+                  </div>
+                )}
               </div>
               <canvas ref={qrCanvasRef} className="hidden" />
             </motion.div>
