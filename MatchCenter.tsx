@@ -547,6 +547,16 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     localStorage.setItem('22YARDS_GLOBAL_VAULT', JSON.stringify(globalVault));
   };
 
+  // Strip match-specific stats from players when importing from vault
+  const resetPlayerStats = (players: any[]) =>
+    players.map(p => ({
+      ...p,
+      runs: 0, balls: 0, fours: 0, sixes: 0,
+      isOut: false, wicketType: undefined,
+      wickets: 0, runs_conceded: 0, balls_bowled: 0,
+      catches: 0, stumpings: 0, run_outs: 0,
+    }));
+
   const getTeamInitials = (name: string) => {
     const words = name.split(' ');
     return words.length > 1
@@ -1616,7 +1626,7 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                                   ...m.teams[teamDrawer.targetTeam === 'A' ? 'teamA' : 'teamB'],
                                                   name: team.name,
                                                   logo: team.logo || '',
-                                                  squad: team.squad || []
+                                                  squad: resetPlayerStats(team.squad || [])
                                                 }
                                               }
                                             }));
@@ -2837,116 +2847,196 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
           // Current over display (for summary)
           const lastOverBalls = currentHistory.slice(-6);
+          // Run rate
+          const runRate = match.liveScore.balls > 0 ? ((match.liveScore.runs / match.liveScore.balls) * 6).toFixed(2) : '0.00';
+          // Extras and boundaries
+          const totalExtras = currentHistory.reduce((sum, b) => sum + (b.type === 'WD' || b.type === 'NB' ? 1 : 0) + (b.type === 'BYE' || b.type === 'LB' ? (b.runsScored || 0) : 0), 0);
+          const totalFours = currentHistory.filter(b => b.runsScored === 4 && !b.isWicket && b.type !== 'BYE' && b.type !== 'LB').length;
+          const totalSixes = currentHistory.filter(b => b.runsScored === 6 && !b.isWicket && b.type !== 'BYE' && b.type !== 'LB').length;
+          const target = match.config.target || match.liveScore.runs + 1;
 
           return (
-            <div className="flex-1 flex flex-col items-center justify-center overflow-y-auto p-4">
-              <motion.div
-                initial={{ scale: 0.95, opacity: 0, y: 20 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                transition={{ type: 'spring', damping: 10, stiffness: 200 }}
-                className="w-full max-w-md bg-gradient-to-br from-black/80 via-black/70 to-[#BC13FE]/10 border border-white/10 rounded-3xl overflow-hidden shadow-2xl my-auto"
-              >
-                {/* SCORE BANNER */}
-                <div className="p-6 bg-gradient-to-r from-[#00F0FF]/20 to-[#BC13FE]/20 border-b border-white/10 text-center space-y-2">
-                  <p className="text-[10px] font-black text-white/60 uppercase tracking-wider">Innings {match.currentInnings} Summary</p>
-                  <h2 className="font-heading text-3xl uppercase italic text-white">{battingTeamName}</h2>
-                  <div className="font-numbers text-5xl font-black text-[#00F0FF]">{match.liveScore.runs}/{match.liveScore.wickets}</div>
-                  <p className="text-[11px] text-white/50">in {overs}.{balls} overs</p>
-                </div>
+            <div className="flex-1 flex flex-col overflow-y-auto no-scrollbar bg-black">
+              <div className="flex-1 p-4 pb-10 space-y-4">
 
-                {/* HIGHLIGHTS GRID */}
-                <div className="p-4 space-y-3">
-                  {/* Top Performer */}
-                  <div className="p-3 rounded-2xl bg-white/5 border border-[#FFD600]/20">
-                    <p className="text-[9px] font-black text-[#FFD600] uppercase mb-1">Top Performer</p>
-                    <p className="text-[11px] font-black text-white">{topPerformerInfo}</p>
+                {/* HERO SCORE CARD */}
+                <motion.div
+                  initial={{ scale: 0.92, opacity: 0, y: 30 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  transition={{ type: 'spring', damping: 12, stiffness: 180 }}
+                  className="relative overflow-hidden rounded-[28px] border border-white/10"
+                  style={{ background: 'linear-gradient(135deg, rgba(0,240,255,0.12) 0%, rgba(188,19,254,0.15) 50%, rgba(255,214,0,0.08) 100%)' }}
+                >
+                  {/* Decorative glow */}
+                  <div className="absolute -top-20 -right-20 w-40 h-40 rounded-full bg-[#00F0FF]/10 blur-3xl" />
+                  <div className="absolute -bottom-16 -left-16 w-32 h-32 rounded-full bg-[#BC13FE]/10 blur-3xl" />
+
+                  <div className="relative z-10 p-6 text-center space-y-1">
+                    <p className="text-[9px] font-black text-white/40 uppercase tracking-[0.4em]">Innings {match.currentInnings} Complete</p>
+                    <h2 className="font-heading text-2xl uppercase italic text-white leading-tight">{battingTeamName}</h2>
+                    <motion.div
+                      initial={{ scale: 0.5, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+                      className="py-2"
+                    >
+                      <span className="font-numbers text-6xl font-black text-[#00F0FF] leading-none">{match.liveScore.runs}</span>
+                      <span className="font-numbers text-3xl font-black text-white/30 mx-1">/</span>
+                      <span className="font-numbers text-4xl font-black text-[#FF003C] leading-none">{match.liveScore.wickets}</span>
+                    </motion.div>
+                    <p className="text-[10px] text-white/50 font-black">{overs}.{balls} overs &bull; RR {runRate}</p>
                   </div>
 
-                  {/* Best Bowler */}
-                  {bestBowler?.name && (
-                    <div className="p-3 rounded-2xl bg-white/5 border border-[#BC13FE]/20">
-                      <p className="text-[9px] font-black text-[#BC13FE] uppercase mb-1">Best Bowler</p>
-                      <p className="text-[11px] font-black text-white">{bestBowlerInfo}</p>
+                  {/* Quick Stats Row */}
+                  <div className="relative z-10 grid grid-cols-4 border-t border-white/10">
+                    <div className="p-3 text-center border-r border-white/5">
+                      <p className="font-numbers text-lg font-black text-[#BC13FE]">{totalFours}</p>
+                      <p className="text-[7px] font-black text-white/30 uppercase">Fours</p>
                     </div>
-                  )}
-
-                  {/* Key Partnerships */}
-                  {partnerships.length > 0 && (
-                    <div className="p-3 rounded-2xl bg-white/5 border border-[#4DB6AC]/20">
-                      <p className="text-[9px] font-black text-[#4DB6AC] uppercase mb-1">Notable Partnerships</p>
-                      <div className="space-y-1">
-                        {partnerships.slice(0, 2).map((p, idx) => (
-                          <p key={idx} className="text-[10px] text-white/80">{p.runs} runs</p>
-                        ))}
-                      </div>
+                    <div className="p-3 text-center border-r border-white/5">
+                      <p className="font-numbers text-lg font-black text-[#FFD600]">{totalSixes}</p>
+                      <p className="text-[7px] font-black text-white/30 uppercase">Sixes</p>
                     </div>
-                  )}
-
-                  {/* Last Over Ticker */}
-                  {lastOverBalls.length > 0 && (
-                    <div className="p-3 rounded-2xl bg-white/5 border border-white/10">
-                      <p className="text-[9px] font-black text-white/60 uppercase mb-2">Last Over</p>
-                      <div className="flex justify-center gap-1.5">
-                        {lastOverBalls.map((ball, idx) => {
-                          let bgColor = 'bg-white/20';
-                          let displayText = '0';
-
-                          if (ball.isWicket) {
-                            bgColor = 'bg-[#FF003C]';
-                            displayText = 'W';
-                          } else if (ball.type === 'WD') {
-                            bgColor = 'bg-[#FF6D00]';
-                            displayText = 'Wd';
-                          } else if (ball.type === 'NB') {
-                            bgColor = 'bg-[#FF6D00]';
-                            displayText = 'Nb';
-                          } else if (ball.runsScored === 4) {
-                            bgColor = 'bg-[#BC13FE]';
-                            displayText = '4';
-                          } else if (ball.runsScored === 6) {
-                            bgColor = 'bg-[#FFD600]';
-                            displayText = '6';
-                          } else if (ball.runsScored > 0) {
-                            bgColor = 'bg-white/30';
-                            displayText = String(ball.runsScored);
-                          }
-
-                          return (
-                            <div
-                              key={idx}
-                              className={`w-6 h-6 ${bgColor} rounded-full flex items-center justify-center text-[8px] font-black text-white/90`}
-                            >
-                              {displayText}
-                            </div>
-                          );
-                        })}
-                      </div>
+                    <div className="p-3 text-center border-r border-white/5">
+                      <p className="font-numbers text-lg font-black text-[#FF6D00]">{totalExtras}</p>
+                      <p className="text-[7px] font-black text-white/30 uppercase">Extras</p>
                     </div>
-                  )}
+                    <div className="p-3 text-center">
+                      <p className="font-numbers text-lg font-black text-[#4DB6AC]">{partnerships.length}</p>
+                      <p className="text-[7px] font-black text-white/30 uppercase">P'ships</p>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* TOP PERFORMER + BEST BOWLER — side by side */}
+                <div className="grid grid-cols-2 gap-3">
+                  <motion.div
+                    initial={{ x: -20, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                    className="p-4 rounded-2xl bg-[#FFD600]/5 border border-[#FFD600]/20 space-y-2"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Star size={12} className="text-[#FFD600]" />
+                      <p className="text-[8px] font-black text-[#FFD600] uppercase tracking-wider">Star</p>
+                    </div>
+                    <p className="text-[12px] font-black text-white leading-tight">{topPerformer?.name || 'N/A'}</p>
+                    {topPerformer?.name && (
+                      <p className="font-numbers text-[10px] text-white/50 font-black">
+                        {topPerformer.runs}({topPerformer.balls}) {topPerformer.fours ? `${topPerformer.fours}x4` : ''} {topPerformer.sixes ? `${topPerformer.sixes}x6` : ''}
+                      </p>
+                    )}
+                  </motion.div>
+                  <motion.div
+                    initial={{ x: 20, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ delay: 0.35 }}
+                    className="p-4 rounded-2xl bg-[#BC13FE]/5 border border-[#BC13FE]/20 space-y-2"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Target size={12} className="text-[#BC13FE]" />
+                      <p className="text-[8px] font-black text-[#BC13FE] uppercase tracking-wider">Best Bowl</p>
+                    </div>
+                    <p className="text-[12px] font-black text-white leading-tight">{bestBowler?.name || 'N/A'}</p>
+                    {bestBowler?.name && (
+                      <p className="font-numbers text-[10px] text-white/50 font-black">
+                        {bestBowler.wickets}-{bestBowler.runs_conceded} ({Math.floor((bestBowler.balls_bowled || 0) / 6)}.{(bestBowler.balls_bowled || 0) % 6})
+                      </p>
+                    )}
+                  </motion.div>
                 </div>
 
+                {/* PARTNERSHIPS */}
+                {partnerships.length > 0 && (
+                  <motion.div
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.4 }}
+                    className="p-4 rounded-2xl bg-white/[0.02] border border-[#4DB6AC]/15 space-y-3"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Users size={12} className="text-[#4DB6AC]" />
+                      <p className="text-[8px] font-black text-[#4DB6AC] uppercase tracking-wider">Key Partnerships</p>
+                    </div>
+                    {partnerships.slice(0, 3).map((p, idx) => (
+                      <div key={idx} className="flex items-center gap-3">
+                        <div className="h-1.5 flex-1 bg-white/10 rounded-full overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.min(100, (p.runs / Math.max(1, match.liveScore.runs)) * 100)}%` }}
+                            transition={{ delay: 0.5 + idx * 0.1, duration: 0.6 }}
+                            className="h-full bg-[#4DB6AC] rounded-full"
+                          />
+                        </div>
+                        <span className="font-numbers text-[11px] font-black text-white w-10 text-right">{p.runs}</span>
+                      </div>
+                    ))}
+                  </motion.div>
+                )}
+
+                {/* LAST OVER */}
+                {lastOverBalls.length > 0 && (
+                  <motion.div
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.5 }}
+                    className="flex items-center gap-3 p-4 rounded-2xl bg-white/[0.02] border border-white/5"
+                  >
+                    <p className="text-[8px] font-black text-white/30 uppercase shrink-0">Last Over</p>
+                    <div className="flex gap-1.5 flex-1 justify-center">
+                      {lastOverBalls.map((ball, idx) => {
+                        let bgColor = 'bg-white/15';
+                        let displayText = '0';
+                        if (ball.isWicket) { bgColor = 'bg-[#FF003C]'; displayText = 'W'; }
+                        else if (ball.type === 'WD') { bgColor = 'bg-[#FF6D00]/60'; displayText = 'Wd'; }
+                        else if (ball.type === 'NB') { bgColor = 'bg-[#FF6D00]/60'; displayText = 'Nb'; }
+                        else if (ball.runsScored === 4) { bgColor = 'bg-[#BC13FE]'; displayText = '4'; }
+                        else if (ball.runsScored === 6) { bgColor = 'bg-[#FFD600]'; displayText = '6'; }
+                        else if (ball.runsScored > 0) { bgColor = 'bg-white/25'; displayText = String(ball.runsScored); }
+                        return (
+                          <div key={idx} className={`w-7 h-7 ${bgColor} rounded-full flex items-center justify-center text-[9px] font-black text-white`}>
+                            {displayText}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="font-numbers text-[11px] font-black text-white/50 shrink-0">
+                      {lastOverBalls.reduce((s, b) => s + (b.runsScored || 0) + (b.type === 'WD' || b.type === 'NB' ? 1 : 0), 0)}r
+                    </p>
+                  </motion.div>
+                )}
+
+                {/* TARGET BANNER */}
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.55 }}
+                  className="p-5 rounded-2xl bg-gradient-to-r from-[#39FF14]/10 to-[#39FF14]/5 border border-[#39FF14]/30 text-center"
+                >
+                  <p className="text-[8px] font-black text-[#39FF14]/60 uppercase tracking-[0.3em] mb-1">Target Set</p>
+                  <p className="font-numbers text-4xl font-black text-[#39FF14]">{target}</p>
+                </motion.div>
+
                 {/* BUTTONS */}
-                <div className="p-4 space-y-3 border-t border-white/10">
+                <div className="space-y-3 pt-2 pb-6">
                   <motion.button
                     onClick={() => {
-                      // Share to WhatsApp
-                      const target = match.config.target || match.liveScore.runs + 1;
+                      const followUrl = `${window.location.origin}${window.location.pathname}?watch=${match.matchId}`;
                       const msg = encodeURIComponent(
-                        `🏏 ${battingTeamName} scored ${match.liveScore.runs}/${match.liveScore.wickets} in ${overs}.${balls} overs\n\nTarget: ${target}\n\n📺 Follow live:\n${window.location.origin}${window.location.pathname}?watch=${match.matchId}`
+                        `🏏 ${battingTeamName} scored ${match.liveScore.runs}/${match.liveScore.wickets} in ${overs}.${balls} overs\n\nTarget: ${target}\n\n📺 Follow live:\n${followUrl}`
                       );
                       window.open(`https://wa.me/?text=${msg}`);
                     }}
                     whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="w-full py-3 rounded-xl bg-[#25D366]/20 hover:bg-[#25D366]/30 border border-[#25D366]/40 text-[#25D366] font-black text-sm uppercase transition-all flex items-center justify-center gap-2"
+                    whileTap={{ scale: 0.95 }}
+                    className="w-full py-4 rounded-2xl bg-[#25D366]/15 hover:bg-[#25D366]/25 border border-[#25D366]/30 text-[#25D366] font-black text-[12px] uppercase tracking-wider transition-all flex items-center justify-center gap-2"
                   >
                     <Share2 size={16} />
-                    Share to WhatsApp
+                    Share on WhatsApp
                   </motion.button>
 
                   <motion.button
                     onClick={() => {
-                      const target = match.config.target || match.liveScore.runs + 1;
                       setMatch(m => ({
                         ...m,
                         status: 'OPENERS',
@@ -2960,13 +3050,14 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                       setStatus('OPENERS');
                     }}
                     whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="w-full py-3 rounded-xl bg-[#39FF14]/20 hover:bg-[#39FF14]/30 border border-[#39FF14]/40 text-[#39FF14] font-black text-sm uppercase transition-all"
+                    whileTap={{ scale: 0.95 }}
+                    className="w-full py-5 rounded-2xl bg-[#39FF14] text-black font-black text-[13px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(57,255,20,0.3)]"
                   >
-                    Start Innings 2 • Target: {match.config.target || match.liveScore.runs + 1}
+                    <Zap size={18} />
+                    Start Innings 2
                   </motion.button>
                 </div>
-              </motion.div>
+              </div>
             </div>
           );
         })()}
