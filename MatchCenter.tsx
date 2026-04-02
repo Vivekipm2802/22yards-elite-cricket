@@ -177,9 +177,8 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   } | null>(null);
 
   useEffect(() => {
-    if (match.status !== 'COMPLETED') {
-      localStorage.setItem('22YARDS_ACTIVE_MATCH', JSON.stringify(match));
-    }
+    // Always save — including COMPLETED so we know the match is done
+    localStorage.setItem('22YARDS_ACTIVE_MATCH', JSON.stringify(match));
   }, [match]);
 
   const liveChannelRef = useRef<any>(null);
@@ -785,7 +784,8 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const bowlingTeam = getTeamObj(match.teams.bowlingTeamId);
     const overs = Math.floor(match.liveScore.balls / 6);
     const balls = match.liveScore.balls % 6;
-    return `${battingTeam.name} ${match.liveScore.runs}/${match.liveScore.wickets} (${overs}.${balls}) vs ${bowlingTeam.name} | 22 Yards`;
+    const followUrl = `${window.location.origin}${window.location.pathname}?watch=${match.matchId}`;
+    return `${battingTeam.name} ${match.liveScore.runs}/${match.liveScore.wickets} (${overs}.${balls}) vs ${bowlingTeam.name} | 22 Yards\n\n📺 Follow live:\n${followUrl}`;
   };
 
   const innings1TeamId = match.currentInnings === 1 ? match.teams.battingTeamId : match.teams.bowlingTeamId;
@@ -909,7 +909,12 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
       {/* HEADER */}
       <div className="h-14 flex items-center px-6 border-b border-white/5 bg-black/50 backdrop-blur-md z-[100] shrink-0">
-        <button onClick={onBack} className="p-2 -ml-2 text-[#00F0FF] hover:bg-white/5 rounded-full transition-all"><ChevronLeft size={20} /></button>
+        <button onClick={() => {
+          if (status === 'SUMMARY') {
+            localStorage.setItem('22YARDS_ACTIVE_MATCH', JSON.stringify({ ...match, status: 'COMPLETED' }));
+          }
+          onBack();
+        }} className="p-2 -ml-2 text-[#00F0FF] hover:bg-white/5 rounded-full transition-all"><ChevronLeft size={20} /></button>
         <h2 className="ml-4 font-heading text-xl tracking-[0.1em] text-white uppercase italic">
           {status === 'LIVE' ? 'BATTLEFIELD' : status === 'SUMMARY' ? 'ARENA TELEMETRY' : 'MATCH SETUP'}
         </h2>
@@ -2014,20 +2019,35 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 </p>
               </div>
 
-              {/* Share Match Link */}
-              <button
-                type="button"
-                onClick={() => {
-                  const tossWinner = getTeamObj(match.toss.winnerId)?.name || 'Team';
-                  const decision = match.toss.decision === 'BAT' ? 'bat' : 'bowl';
-                  const text = `🏏 Match Starting!\n\n${match.teams.teamA.name} vs ${match.teams.teamB.name}\n${tossWinner} won the toss and elected to ${decision}.\n\n📍 ${match.config.ground || match.config.city}\n\nFollow live on 22 Yards!`;
-                  window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
-                }}
-                className="w-full p-4 rounded-[20px] bg-[#25D366]/15 border border-[#25D366]/40 flex items-center justify-center gap-3 transition-all active:scale-95"
-              >
-                <Share2 size={16} className="text-[#25D366]" />
-                <span className="text-[12px] font-black text-[#25D366] uppercase tracking-[0.1em]">Share Match on WhatsApp</span>
-              </button>
+              {/* Share Follow Link */}
+              {(() => {
+                const followUrl = `${window.location.origin}${window.location.pathname}?watch=${match.matchId}`;
+                const tossWinner = getTeamObj(match.toss.winnerId)?.name || 'Team';
+                const decision = match.toss.decision === 'BAT' ? 'bat' : 'bowl';
+                return (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const text = `🏏 Match Starting!\n\n${match.teams.teamA.name} vs ${match.teams.teamB.name}\n${tossWinner} won the toss and elected to ${decision}.\n\n📍 ${match.config.ground || match.config.city}\n\n📺 Follow live:\n${followUrl}`;
+                        window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+                      }}
+                      className="w-full p-4 rounded-[20px] bg-[#25D366]/15 border border-[#25D366]/40 flex items-center justify-center gap-3 transition-all active:scale-95"
+                    >
+                      <Share2 size={16} className="text-[#25D366]" />
+                      <span className="text-[12px] font-black text-[#25D366] uppercase tracking-[0.1em]">Share Match on WhatsApp</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { navigator.clipboard.writeText(followUrl); }}
+                      className="w-full p-3 rounded-[16px] bg-white/5 border border-white/10 flex items-center justify-center gap-2 transition-all active:scale-95"
+                    >
+                      <ClipboardList size={14} className="text-white/50" />
+                      <span className="text-[10px] font-black text-white/50 uppercase tracking-[0.1em]">Copy Follow Link</span>
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Step Progress */}
               <div className="flex items-center gap-2">
@@ -2578,6 +2598,59 @@ const MatchCenter: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   ))}
                 </div>
               )}
+
+              {/* Share + New Match buttons */}
+              <div className="space-y-3 pt-4">
+                {/* Share result on WhatsApp with follow link */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const followUrl = `${window.location.origin}${window.location.pathname}?watch=${match.matchId}`;
+                    const result = winnerTeam ? `${winnerTeam.name} ${winnerTeam.margin}` : 'Match Complete';
+                    const text = `🏏 Match Result\n\n${match.teams.teamA.name} vs ${match.teams.teamB.name}\n\n${result}\n\n📍 ${match.config.ground || match.config.city}\n\n📺 Full Scorecard:\n${followUrl}`;
+                    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+                  }}
+                  className="w-full py-4 rounded-[20px] bg-[#25D366] text-black font-black uppercase text-[12px] tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all"
+                >
+                  <Share2 size={16} />
+                  Share Result
+                </button>
+
+                {/* New Match */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const freshState = createInitialState();
+                    localStorage.setItem('22YARDS_ACTIVE_MATCH', JSON.stringify(freshState));
+                    setMatch(freshState);
+                    setStatus('CONFIG');
+                    setWinnerTeam(null);
+                    setSelectionTarget(null);
+                    setConfigStep(1);
+                    setVsRevealed(false);
+                    setOverlayAnim(null);
+                    setSummaryTab('OVERVIEW');
+                  }}
+                  className="w-full py-4 rounded-[20px] bg-[#00F0FF] text-black font-black uppercase text-[12px] tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all"
+                >
+                  <Swords size={16} />
+                  New Match
+                </button>
+
+                {/* Back to Dugout */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Mark as completed in localStorage so next mount resets
+                    localStorage.setItem('22YARDS_ACTIVE_MATCH', JSON.stringify({ ...match, status: 'COMPLETED' }));
+                    onBack();
+                  }}
+                  className="w-full py-3 rounded-[20px] bg-white/5 border border-white/10 text-white/50 font-black uppercase text-[11px] tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all"
+                >
+                  <ChevronLeft size={16} />
+                  Back to Dugout
+                </button>
+              </div>
             </div>
           </div>
         )}
