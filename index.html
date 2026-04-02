@@ -445,6 +445,87 @@
 
         /* Active scale on buttons */
         html[data-theme="light"] .active\:scale-\[0\.98\]:active { transform: scale(0.98); }
+
+        /* ====== LIGHT MODE: FIRE MODE & ICE MODE ============================================= */
+        /* Fire mode main bg --- warm rose instead of deep red-brown */
+        html[data-theme="light"] .bg-\[\#1a0500\] { background-color: #fef2f2 !important; }
+        /* Ice mode main bg --- cool blue instead of deep navy */
+        html[data-theme="light"] .bg-\[\#000a1a\] { background-color: #eff6ff !important; }
+
+        /* Fire/Ice mode ambient gradient overlays need toning down.
+           The overlays are inline styles so we target their parent container. */
+
+        /* --- Fire mode text colors --- */
+        html[data-theme="light"] .text-\[\#80D8FF\] { color: #1565C0 !important; }
+        html[data-theme="light"] .text-\[\#80D8FF\]\/80 { color: rgba(21,101,192,0.8) !important; }
+        html[data-theme="light"] .text-\[\#E1BEE7\] { color: #7B1FA2 !important; }
+
+        /* --- Scoring button backgrounds (orange extras: WD, NB, BYE, LB) --- */
+        html[data-theme="light"] .bg-\[\#FF6D00\]\/40 { background-color: rgba(204,16,16,0.2) !important; }
+        html[data-theme="light"] .bg-\[\#FF6D00\]\/30 { background-color: rgba(204,16,16,0.15) !important; }
+        html[data-theme="light"] .hover\:bg-\[\#FF6D00\]\/50:hover { background-color: rgba(204,16,16,0.25) !important; }
+        html[data-theme="light"] .hover\:bg-\[\#FF6D00\]\/40:hover { background-color: rgba(204,16,16,0.2) !important; }
+        html[data-theme="light"] .border-\[\#FF6D00\]\/60 { border-color: rgba(204,16,16,0.5) !important; }
+        html[data-theme="light"] .border-\[\#FF6D00\]\/50 { border-color: rgba(204,16,16,0.4) !important; }
+
+        /* --- Purple button (4-runs) --- */
+        html[data-theme="light"] .bg-\[\#BC13FE\]\/20 { background-color: rgba(204,16,16,0.12) !important; }
+        html[data-theme="light"] .bg-\[\#BC13FE\]\/30,
+        html[data-theme="light"] .hover\:bg-\[\#BC13FE\]\/30:hover { background-color: rgba(204,16,16,0.18) !important; }
+        html[data-theme="light"] .border-\[\#BC13FE\]\/40 { border-color: rgba(204,16,16,0.35) !important; }
+
+        /* --- Gold button (6-runs) --- */
+        html[data-theme="light"] .bg-\[\#FFD600\]\/30,
+        html[data-theme="light"] .hover\:bg-\[\#FFD600\]\/30:hover { background-color: rgba(204,16,16,0.15) !important; }
+        html[data-theme="light"] .border-\[\#FFD600\]\/40 { border-color: rgba(204,16,16,0.35) !important; }
+
+        /* --- Teal button (SWAP) --- */
+        html[data-theme="light"] .bg-\[\#4DB6AC\]\/20 { background-color: rgba(185,28,28,0.1) !important; }
+        html[data-theme="light"] .hover\:bg-\[\#4DB6AC\]\/30:hover { background-color: rgba(185,28,28,0.15) !important; }
+        html[data-theme="light"] .border-\[\#4DB6AC\]\/40 { border-color: rgba(185,28,28,0.35) !important; }
+
+        /* --- Wicket button --- stays red, just soften */
+        html[data-theme="light"] .bg-\[\#FF003C\].hover\:bg-\[\#FF003C\]\/90:hover { background-color: rgba(204,16,16,0.9) !important; }
+        html[data-theme="light"] .border-\[\#FF003C\]\/60 { border-color: rgba(204,16,16,0.6) !important; }
+
+        /* --- 0/1/2/3 scoring buttons: bg-white/10 on light fire/ice bg --- */
+        /* Already handled by bg-white/10 override, but boost contrast */
+        html[data-theme="light"] .hover\:bg-white\/20:hover { background-color: rgba(15,23,42,0.12) !important; }
+
+        /* --- Fire mode banner gradient --- keep vivid, just soften shadow */
+        html[data-theme="light"] .shadow-\[0_4px_20px_rgba\(255\,109\,0\,0\.5\)\] { box-shadow: 0 4px 20px rgba(204,16,16,0.3) !important; }
+        /* --- Ice mode banner gradient --- keep vivid, just soften shadow */
+        html[data-theme="light"] .shadow-\[0_4px_20px_rgba\(33\,150\,243\,0\.4\)\] { box-shadow: 0 4px 16px rgba(21,101,192,0.25) !important; }
+
+        /* --- Ice mode banner dark blue bg --- */
+        html[data-theme="light"] .from-\[\#1a3a5c\] {
+            --tw-gradient-from: #1e40af !important;
+            --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(30,64,175,0)) !important;
+        }
+        html[data-theme="light"] .via-\[\#2196F3\] {
+            --tw-gradient-stops: var(--tw-gradient-from), #3b82f6, var(--tw-gradient-to) !important;
+        }
+        html[data-theme="light"] .to-\[\#80D8FF\] { --tw-gradient-to: #93c5fd !important; }
+
+        /* Fire mode banner gradients --- keep readable */
+        html[data-theme="light"] .via-\[\#FF6D00\] {
+            --tw-gradient-stops: var(--tw-gradient-from), #CC1010, var(--tw-gradient-to) !important;
+        }
+        html[data-theme="light"] .from-\[\#FF003C\] {
+            --tw-gradient-from: #CC1010 !important;
+            --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(204,16,16,0)) !important;
+        }
+        html[data-theme="light"] .to-\[\#FFD600\] { --tw-gradient-to: #991b1b !important; }
+
+        /* Partnership bar text in fire/ice mode */
+        html[data-theme="light"] .text-\[\#1565C0\] { color: #1565C0 !important; }
+
+        /* Fire/ice bg container: force inline gradient overlays to be subtle
+           by making the container semi-opaque in light mode */
+        html[data-theme="light"] .bg-\[\#1a0500\] > div[style],
+        html[data-theme="light"] .bg-\[\#000a1a\] > div[style] {
+            opacity: 0.3 !important;
+        }
     </style>
 </head>
 <body>
