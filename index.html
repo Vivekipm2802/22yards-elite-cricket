@@ -129,17 +129,17 @@
         html[data-theme="light"] .bg-\[\#020617\],
         html[data-theme="light"] .bg-\[\#0D0D0D\],
         html[data-theme="light"] .bg-\[\#020d1f\],
-        html[data-theme="light"] .bg-\[\#0a0a0a\] { background-color: #f0f4f8 !important; }
+        html[data-theme="light"] .bg-\[\#0a0a0a\] { background-color: #ffffff !important; }
         html[data-theme="light"] .bg-\[\#121212\] { background-color: #ffffff !important; }
         html[data-theme="light"] .bg-\[\#1A1A1A\],
         html[data-theme="light"] .bg-\[\#111\] { background-color: #f1f5f9 !important; }
         html[data-theme="light"] .bg-black { background-color: #f8fafc !important; }
-        html[data-theme="light"] .bg-black\/50,
-        html[data-theme="light"] .bg-black\/80 { background-color: rgba(248,250,252,0.92) !important; }
-        html[data-theme="light"] .bg-black\/40 { background-color: rgba(248,250,252,0.75) !important; }
-        html[data-theme="light"] .bg-black\/95 { background-color: rgba(248,250,252,0.98) !important; }
-        html[data-theme="light"] .bg-black\/90 { background-color: rgba(248,250,252,0.97) !important; }
-        html[data-theme="light"] .bg-black\/60 { background-color: rgba(0,0,0,0.45) !important; }
+        html[data-theme="light"] .bg-black\/50 { background-color: rgba(15,23,42,0.35) !important; }
+        html[data-theme="light"] .bg-black\/80 { background-color: rgba(15,23,42,0.55) !important; }
+        html[data-theme="light"] .bg-black\/40 { background-color: rgba(15,23,42,0.25) !important; }
+        html[data-theme="light"] .bg-black\/95 { background-color: rgba(15,23,42,0.7) !important; }
+        html[data-theme="light"] .bg-black\/90 { background-color: rgba(15,23,42,0.6) !important; }
+        html[data-theme="light"] .bg-black\/60 { background-color: rgba(15,23,42,0.4) !important; }
         html[data-theme="light"] .bg-white\/5,
         html[data-theme="light"] .bg-white\/\[0\.02\],
         html[data-theme="light"] .bg-white\/\[0\.03\],
@@ -365,6 +365,86 @@
         /* Bottom tab bar overrides its own .opacity-40 back to a value that works on dark bg */
         html[data-theme="light"] .bottom-tab-bar .opacity-40 { opacity: 0.85 !important; }
         html[data-theme="light"] .bottom-tab-bar .opacity-30 { opacity: 0.70 !important; }
+
+        /* ====== LIGHT MODE: MODAL / SQUAD EDITOR / ADD-PLAYER FIX ============================== */
+        /* Case-sensitivity fix: MatchCenter uses uppercase #0A0A0A but CSS had lowercase */
+        html[data-theme="light"] .bg-\[\#0A0A0A\] { background-color: #ffffff !important; }
+        html[data-theme="light"] .from-\[\#0A0A0A\] {
+            --tw-gradient-from: #ffffff !important;
+            --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(255,255,255,0)) !important;
+        }
+        html[data-theme="light"] .to-\[\#111\] { --tw-gradient-to: #f1f5f9 !important; }
+
+        /* Modal overlays --- keep dark so modal pops above page */
+        html[data-theme="light"] .bg-black\/95.backdrop-blur-xl,
+        html[data-theme="light"] .bg-black\/90.backdrop-blur-xl,
+        html[data-theme="light"] .bg-black\/80.backdrop-blur-xl {
+            background-color: rgba(15,23,42,0.5) !important;
+        }
+
+        /* Squad editor / team modal: give the modal card a solid white bg with shadow */
+        html[data-theme="light"] .bg-\[\#0A0A0A\].border {
+            background-color: #ffffff !important;
+            border-color: rgba(15,23,42,0.12) !important;
+            box-shadow: 0 25px 60px rgba(15,23,42,0.18), 0 4px 16px rgba(15,23,42,0.08) !important;
+        }
+
+        /* Input fields inside modals: visible white bg with clear border */
+        html[data-theme="light"] .bg-white\/10 { background-color: rgba(15,23,42,0.06) !important; }
+
+        /* Missing text opacity variants */
+        html[data-theme="light"] .text-white\/50 { color: rgba(15,23,42,0.55) !important; }
+        html[data-theme="light"] .text-white\/25 { color: rgba(15,23,42,0.45) !important; }
+
+        /* Placeholder overrides for modal inputs */
+        html[data-theme="light"] .placeholder\:text-white\/40::placeholder { color: rgba(15,23,42,0.35) !important; }
+        html[data-theme="light"] .placeholder\:text-white\/25::placeholder { color: rgba(15,23,42,0.3) !important; }
+        html[data-theme="light"] .placeholder\:text-white\/20::placeholder { color: rgba(15,23,42,0.25) !important; }
+
+        /* Focus border states inside modals */
+        html[data-theme="light"] .focus\:border-\[\#00F0FF\]\/50:focus { border-color: rgba(204,16,16,0.5) !important; }
+
+        /* Captain / WK button accent backgrounds */
+        html[data-theme="light"] .bg-\[\#FFD600\]\/30 { background-color: rgba(204,16,16,0.15) !important; }
+        html[data-theme="light"] .bg-\[\#00F0FF\]\/30 { background-color: rgba(204,16,16,0.15) !important; }
+        html[data-theme="light"] .border-\[\#FFD600\] { border-color: #CC1010 !important; }
+
+        /* Delete button accent */
+        html[data-theme="light"] .text-\[\#FF003C\] { color: #CC1010 !important; }
+        html[data-theme="light"] .hover\:bg-\[\#FF003C\]\/20:hover { background-color: rgba(204,16,16,0.12) !important; }
+        html[data-theme="light"] .border-\[\#FF003C\]\/30 { border-color: rgba(204,16,16,0.3) !important; }
+
+        /* Hover bg states */
+        html[data-theme="light"] .hover\:bg-white\/5:hover { background-color: rgba(15,23,42,0.05) !important; }
+        html[data-theme="light"] .hover\:bg-white\/10:hover { background-color: rgba(15,23,42,0.08) !important; }
+        html[data-theme="light"] .hover\:border-white\/20:hover { border-color: rgba(15,23,42,0.2) !important; }
+
+        /* Shadow overrides for cyan/green buttons in modals */
+        html[data-theme="light"] .shadow-\[0_4px_20px_rgba\(0\,240\,255\,0\.3\)\] { box-shadow: 0 4px 20px rgba(204,16,16,0.25) !important; }
+        html[data-theme="light"] .shadow-\[0_0_30px_rgba\(0\,240\,255\,0\.3\)\] { box-shadow: 0 0 30px rgba(204,16,16,0.2) !important; }
+        html[data-theme="light"] .shadow-\[0_12px_40px_rgba\(57\,255\,20\,0\.4\)\] { box-shadow: 0 12px 40px rgba(204,16,16,0.25) !important; }
+        html[data-theme="light"] .shadow-\[0_0_100px_rgba\(0\,0\,0\,1\)\] { box-shadow: 0 0 60px rgba(15,23,42,0.12) !important; }
+        html[data-theme="light"] .shadow-\[0_10px_30px_rgba\(0\,240\,255\,0\.3\)\] { box-shadow: 0 10px 30px rgba(204,16,16,0.2) !important; }
+
+        /* Dropdown menu in squad editor */
+        html[data-theme="light"] .bg-\[\#1A1A1A\].border {
+            background-color: #ffffff !important;
+            box-shadow: 0 8px 24px rgba(15,23,42,0.12) !important;
+        }
+
+        /* text-black stays dark on red/accent buttons --- keep it readable */
+        html[data-theme="light"] .bg-\[\#00F0FF\].text-black,
+        html[data-theme="light"] .bg-\[\#39FF14\].text-black { color: #ffffff !important; }
+
+        /* Border dashed in light mode */
+        html[data-theme="light"] .border-dashed.border-white\/10 { border-color: rgba(15,23,42,0.15) !important; }
+
+        /* Red-bg hover states */
+        html[data-theme="light"] .hover\:bg-red-500\/10:hover { background-color: rgba(204,16,16,0.08) !important; }
+        html[data-theme="light"] .hover\:text-red-500:hover { color: #CC1010 !important; }
+
+        /* Active scale on buttons */
+        html[data-theme="light"] .active\:scale-\[0\.98\]:active { transform: scale(0.98); }
     </style>
 </head>
 <body>
