@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import html2canvas from 'html2canvas';
