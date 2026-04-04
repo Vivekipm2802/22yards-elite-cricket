@@ -138,19 +138,33 @@ const App: React.FC = () => {
     setActivePage('DUGOUT');
   };
 
-  /* —— Decode transfer data from URL and show confirmation —— */
+  /* —— Fetch transfer data from Supabase by matchId and show confirmation —— */
   useEffect(() => {
     if (!transferData || !userData) return;
-    try {
-      const json = decodeURIComponent(escape(atob(transferData)));
-      const matchState = JSON.parse(json);
-      if (matchState && matchState.teams) {
-        setTransferMatchInfo(matchState);
-        setShowTransferConfirm(true);
+    (async () => {
+      try {
+        // transferData is now a matchId — fetch full state from Supabase
+        const matchState = await fetchMatchById(transferData);
+        if (matchState && matchState.teams) {
+          setTransferMatchInfo(matchState);
+          setShowTransferConfirm(true);
+        } else {
+          // Fallback: try legacy base64 decode for old links
+          try {
+            const json = decodeURIComponent(escape(atob(transferData)));
+            const parsed = JSON.parse(json);
+            if (parsed && parsed.teams) {
+              setTransferMatchInfo(parsed);
+              setShowTransferConfirm(true);
+            }
+          } catch (_) {
+            console.error('Transfer: no match found for ID:', transferData);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch transfer data:', e);
       }
-    } catch (e) {
-      console.error('Failed to decode transfer data:', e);
-    }
+    })();
   }, [transferData, userData]);
 
   const acceptTransfer = () => {
