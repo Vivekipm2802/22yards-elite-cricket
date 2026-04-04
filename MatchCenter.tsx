@@ -2093,17 +2093,17 @@ const MatchCenter: React.FC<{ onBack: () => void; onNavigate?: (page: string) =>
                   </div>
 
                   {/* TWO SLEEK TEAM CARDS */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {(['A', 'B'] as const).map((teamId) => {
+                  <div className="flex flex-col lg:flex-row gap-0 lg:gap-6">
+                    {(['A', 'B'] as const).map((teamId, idx) => {
                       const team = getTeamObj(teamId);
                       const isTeamSelected = !!team.name;
 
                       return (
+                        <React.Fragment key={teamId}>
                         <motion.div
-                          key={teamId}
                           initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="relative"
+                          className="relative flex-1"
                         >
                           <AnimatePresence mode="wait">
                             {!isTeamSelected ? (
@@ -2172,6 +2172,29 @@ const MatchCenter: React.FC<{ onBack: () => void; onNavigate?: (page: string) =>
                             )}
                           </AnimatePresence>
                         </motion.div>
+                        {idx === 0 && (
+                          <div className="flex justify-center items-center py-2 lg:hidden">
+                            <AnimatePresence>
+                              {match.teams.teamA.name && match.teams.teamB.name && (
+                                <motion.div
+                                  key="vs-badge-mobile"
+                                  initial={{ scale: 0, rotate: -20 }}
+                                  animate={{ scale: 1, rotate: 0 }}
+                                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                                  onAnimationComplete={() => {
+                                    setVsRevealed(true);
+                                    try { window.navigator.vibrate?.(50); } catch {}
+                                  }}
+                                >
+                                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#FFD600] to-[#FF6D00] flex items-center justify-center shadow-[0_0_40px_rgba(255,214,0,0.5)]">
+                                    <span className="font-heading text-xl text-black font-black italic">VS</span>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        )}
+                        </React.Fragment>
                       );
                     })}
                   </div>
@@ -2182,7 +2205,7 @@ const MatchCenter: React.FC<{ onBack: () => void; onNavigate?: (page: string) =>
                       {match.teams.teamA.name && match.teams.teamB.name && (
                         <>
                           <motion.div
-                            key="vs-badge"
+                            key="vs-badge-desktop"
                             initial={{ scale: 0, rotate: -20 }}
                             animate={{ scale: 1, rotate: 0 }}
                             transition={{ type: 'spring', stiffness: 400, damping: 25 }}
@@ -2192,7 +2215,7 @@ const MatchCenter: React.FC<{ onBack: () => void; onNavigate?: (page: string) =>
                                 window.navigator.vibrate?.(50);
                               } catch {}
                             }}
-                            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20"
+                            className="hidden lg:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20"
                           >
                             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#FFD600] to-[#FF6D00] flex items-center justify-center shadow-[0_0_40px_rgba(255,214,0,0.5)]">
                               <span className="font-heading text-2xl text-black font-black italic">VS</span>
